@@ -86,3 +86,70 @@ def normalize_record(raw: Dict[str, Any]) -> Dict[str, Any]:
             "nome": orgao_superior.get("nome") or "NAO INFORMADO",
         },
     }
+
+class CGUClient:
+    """Cliente HTTP com suporte a autenticação, paginação e retry com backoff exponencial."""
+
+    def __init__(self, api_key: Optional[str] = None, timeout: int = 30):
+        self.api_key = api_key or ""
+        self.timeout = timeout
+        self.session = requests.Session()
+        self.session.headers.update({
+            "chave-api-dados": self.api_key,
+            "Accept": "application/json",
+            "User-Agent": "PortalTransparencia-DataPipeline/1.0",
+        })
+
+    def _request_with_retry(
+        self,
+        endpoint: str,
+        params: Optional[Dict[str, Any]] = None,
+        max_retries: int = 4,
+        backoff_factor: float = 2.0,
+    ) -> list:
+        """Executa uma requisição GET com retry em caso de rate limit ou falhas transitórias."""
+        url = f"{BASE_URL}{endpoint}" if not endpoint.startswith("http") else endpoint
+        params = params or {}
+
+        for attempt in range(1, max_retries + 1):
+            try:
+                response = self.session.get(url, params=params, timeout=self.timeout)
+
+                if response.status_code == 200:
+                    data = response.json()
+                    return data if isinstance(data, list) else [data]
+
+                if response.status_code == 429:
+                    sleep_time = backoff_factor ** attempt
+                    logger.warning(
+                        f"Rate limit atingido (429). Aguardando {sleep_time:.1f}s antes da tentativa {attempt}/{max_retries}..."
+                    )
+                    time.sleep(sleep_time)
+                    continue
+
+                if response.status_code in (500, 502, 503, 504):
+                    sleep_time = backoff_factor ** attempt
+                    logger.warning(
+                        f"Erro de servidor ({response.status_code}). Aguardando {sleep_time:.1f}s antes da tentativa {attempt}/{max_retries}..."
+                    )
+                    time.sleep(sleep_time)
+                    continue
+
+                if response.status_code in (401, 403):
+                    logger.error(
+                        f"Erro de autenticação ({response.status_code}). "
+                        "verifique se a chave 'chave-api-dados' é válida em https://portaldatransparencia.gov.br/api-de-dados/cadastrar-chave"
+                    )
+                    response.raise_for_status()
+
+                response.raise_for_status()
+
+            except requests.exceptions.RequestException as exc:
+                if attempt == max_retries:
+                    logger.error(f"Falha definida após {max_retries} tentativas na URL {url}: {exc}")
+                    raise
+                sleep_time = backoff_factor ** attempt
+                logger.warning(f"Erro na requisição ({exc}). Tentando novamente em {sleep_time:.1f}s...")
+                time.sleep(sleep_time)
+
+        return []
