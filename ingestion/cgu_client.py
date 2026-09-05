@@ -6,7 +6,7 @@ Documentação: https://api.portaldatransparencia.gov.br/swagger-ui/index.html
 
 import time
 import logging
-from typing import Any, Dict, Optional
+from typing import Dict, Any, Generator, Optional
 import requests
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -153,3 +153,45 @@ class CGUClient:
                 time.sleep(sleep_time)
 
         return []
+
+    def get_cartoes_pagamento(
+            self,
+            mes_extrato_inicio: str = "01/2026",
+            mes_extrato_fim: str = "07/2026",
+            max_pages: int = 2,
+    ) -> Generator[Dict[str, Any], None, None]:
+        """
+        Consome o endpoint /cartoes paginado mês a mês para o período especificado.
+
+        """
+        inicio_str = normalize_to_mm_aaaa(mes_extrato_inicio, default_month=1, default_year=2026)
+        fim_str = normalize_to_mm_aaaa(mes_extrato_fim, default_month=7, default_year=2026)
+
+        m_inicio, a_inicio = int(inicio_str.split("/")[0]), int(inicio_str.split("/")[1])
+        m_fim, a_fim = int(fim_str.split("/")[0]), int(fim_str.split("/")[1])
+
+        endpoint = "/cartoes"
+        logger.info(f"Iniciando extração de Cartões de Pagamento: {inicio_str} a {fim_str} (ano 2026, Máx {max_pages} págs/mês)")
+
+        for ano in range(a_inicio, a_fim + 1):
+            start_m = m_inicio if ano == a_inicio else 1
+            end_m = m_fim if ano == a_fim else 12
+
+            for mes in range(start_m, end_m + 1):
+                mes_param = f"{mes:02d}/{ano}"
+                logger.info(f"Consultando despesas do mês {mes_param}...")
+
+                for pagina in range(1, max_pages + 1):
+                    params = {
+                        "mesExtratoInicio": mes_param,
+                        "mesExtratoFim": mes_param,
+                        "pagina": pagina,
+                    }
+
+                    records = self._request_with_retry(endpoint, params=params)
+
+                    if not records:
+                        break
+
+                    for raw_rec in records:
+                        yield normalize_record(raw_rec)
