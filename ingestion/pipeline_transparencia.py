@@ -72,3 +72,33 @@ def cartoes_pagamento_resource() -> Generator[Dict[str, Any], None, None]:
 def transparencia_source():
     """Fonte dlt agrupando recursos do Portal da Transparência."""
     return cartoes_pagamento_resource
+
+
+def run_ingestion(duckdb_path: str = "data/portal_transparencia.duckdb"):
+    """
+    Executa o pipeline dlt carregando os dados brutos no DuckDB (Schema Bronze).
+
+    """
+    logger.info("=== Iniciando Pipeline de Ingestão com dlt ===")
+
+    # Garante que o diretório de destino existe
+    db_file = PROJECT_ROOT / duckdb_path
+    db_file.parent.mkdir(parents=True, exist_ok=True)
+
+    # Configura o pipeline dlt com destino DuckDB
+    pipeline = dlt.pipeline(
+        pipeline_name="portal_transparencia",
+        destination=dlt.destinations.duckdb(str(db_file)),
+        dataset_name="bronze",
+    )
+
+    logger.info(f"Destino DuckDB configurado: {db_file}")
+    load_info = pipeline.run(transparencia_source())
+
+    logger.info("=== Ingestão dlt Concluida com Sucesso! ===")
+    logger.info(f"Informações de Carga:\n{load_info}")
+    return load_info
+
+if __name__ == "__main__":
+    duckdb_env_path = os.getenv("DUCKDB_PARTH", "data/portal_transparencia.duckdb")
+    run_ingestion(duckdb_env_path)

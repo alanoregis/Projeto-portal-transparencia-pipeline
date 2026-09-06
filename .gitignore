@@ -1,4 +1,9 @@
+# Python
+.venv/
+__pycache__/
+
+# Variáveis de ambiente e segredos
 .env
 
-.venv/
-
+# Banco de dados
+data
