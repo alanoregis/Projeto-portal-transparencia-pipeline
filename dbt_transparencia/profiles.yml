@@ -1,0 +1,8 @@
+dbt_transparencia:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: "{{ env_var('DBT_DUCKDB_PATH', 'data/portal_transparencia.duckdb') }}"
+      schema: dev
+      threads: 4

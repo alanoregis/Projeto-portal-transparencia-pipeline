@@ -1,0 +1,9 @@
+version: 2
+
+sources:
+  - name: bronze
+    schema: bronze
+    description: "Camada Bronze contendo dados brutos ingeridos pelo dlthub a partir da API do Portal da Transparência."
+    tables:
+      - name: cartoes_pagamento
+        description: "Transações brutas de Cartões de Pagamento do Governo Federal (CPGF)."
