@@ -1,42 +1,30 @@
-/*
-Dimensão de Favorecidos / Estabelecimentos Comerciais.
-Padrão Industrial com blindagem total contra NULLs (COALESCE + NULLIF).
-*/
-
 {{ config(materialized='table') }}
 
 WITH staging AS (
     SELECT * FROM {{ ref('stg_cpgf_despesas') }}
 ),
 
-prep AS (
-    SELECT
-        cgc_favorecido,
-        nome_favorecido,
-        -- Chave natural à prova de falhas: se CGC e Nome forem nulos ou 'NAO INFORMADO', cai no membro padronizado
-        COALESCE(
-            NULLIF(TRIM(cgc_favorecido), 'NAO INFORMADO'),
-            NULLIF(TRIM(nome_favorecido), 'NAO INFORMADO'),
-            'FAVORECIDO_NAO_IDENTIFICADO'
-        ) AS chave_dedup,
-        _dlt_load_id
-    FROM staging
-),
-
 distinct_favorecidos AS (
     SELECT
-        cgc_favorecido,
         nome_favorecido,
-        chave_dedup
-    FROM prep
+        cgc_favorecido,
+        -- Extrai a raiz do CNPJ (8 primeiros dígitos antes da barra de filial)
+        CASE 
+            WHEN cgc_favorecido LIKE '%/%' THEN SPLIT_PART(cgc_favorecido, '/', 1)
+            ELSE cgc_favorecido 
+        END AS cnpj_raiz,
+        _dlt_load_id
+    FROM staging
+    -- Garante estritamente 1 linha por Nome de Estabelecimento/Marca
     QUALIFY ROW_NUMBER() OVER (
-        PARTITION BY chave_dedup 
+        PARTITION BY nome_favorecido 
         ORDER BY _dlt_load_id DESC
     ) = 1
 )
 
 SELECT
-    {{ dbt_utils.generate_surrogate_key(['chave_dedup']) }} AS sk_favorecido,
-    cgc_favorecido,
-    nome_favorecido
+    {{ dbt_utils.generate_surrogate_key(['nome_favorecido']) }} AS sk_favorecido,
+    nome_favorecido,
+    cnpj_raiz,
+    cgc_favorecido AS cgc_exemplo_filial
 FROM distinct_favorecidos
