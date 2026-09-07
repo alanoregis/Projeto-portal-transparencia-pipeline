@@ -6,4 +6,11 @@ __pycache__/
 .env
 
 # Banco de dados
-data
+data/
+dbt_transparencia/dev.duckdb
+
+# DBT
+target/
+dbt_packages/
+logs/
+.user.yml
