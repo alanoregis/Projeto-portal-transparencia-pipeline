@@ -1,39 +1,32 @@
 /*
 Tabela Fato de Gastos com Cartão de Pagamento (CPGF).
-Padrão Industrial com dbt_utils e blindagem de integridade referencial.
+Star Schema Puro (Kimball).
 */
 
 {{ config(materialized='table') }}
 
 WITH staging AS (
     SELECT * FROM {{ ref('stg_cpgf_despesas') }}
-),
-
-prep AS (
-    SELECT
-        *,
-        -- Mesma chave_dedup usada na dimensão para garantir junção 100% perfeita
-        COALESCE(
-            NULLIF(TRIM(cgc_favorecido), 'NAO INFORMADO'),
-            NULLIF(TRIM(nome_favorecido), 'NAO INFORMADO'),
-            'FAVORECIDO_NAO_IDENTIFICADO'
-        ) AS chave_dedup_favorecido
-    FROM staging
 )
 
 SELECT
-    id_transacao,
+    s.id_transacao,
+    -- FK para dim_data (formato YYYYMMDD)
+    COALESCE(CAST(strftime(s.dt_transacao, '%Y%m%d') AS INTEGER), 19000101) AS sk_data,
+    -- FK para dim_orgaos
     {{ dbt_utils.generate_surrogate_key([
-        'cod_orgao_superior',
-        'cod_orgao_vinculado',
-        'cod_unidade_gestora'
+        's.cod_orgao_superior',
+        's.cod_orgao_vinculado',
+        's.cod_unidade_gestora'
     ]) }} AS sk_orgao,
-    {{ dbt_utils.generate_surrogate_key(['chave_dedup_favorecido']) }} AS sk_favorecido,
-    dt_transacao,
-    ano_mes_extrato,
-    vl_transacao,
-    nome_portador,
-    cpf_portador,
-    desc_tipo_cartao,
-    _dlt_load_id
-FROM prep
+    -- FK para dim_favorecidos
+    {{ dbt_utils.generate_surrogate_key(['s.nome_favorecido']) }} AS sk_favorecido,
+    -- FK para dim_portadores
+    {{ dbt_utils.generate_surrogate_key([
+        "COALESCE(NULLIF(s.cpf_portador, 'NAO INFORMADO'), s.nome_portador)"
+    ]) }} AS sk_portador,
+    -- Métrica Numérica
+    s.vl_transacao,
+    s.desc_tipo_cartao,
+    s._dlt_load_id
+FROM staging s
