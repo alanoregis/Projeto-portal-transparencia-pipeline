@@ -1,0 +1,62 @@
+version: 2
+
+models:
+  # 1. Testes na Staging
+  - name: stg_cpgf_despesas
+    description: "Tabela de staging tratada e padronizada das despesas de cartões."
+    columns:
+      - name: id_transacao
+        description: "Identificador único da transação na origem."
+        tests:
+          - unique
+          - not_null
+
+  # 2. Testes na Dimensão de Órgãos
+  - name: dim_orgaos
+    description: "Dimensão de Órgãos Públicos e Unidades Gestoras."
+    columns:
+      - name: sk_orgao
+        description: "Surrogate key da dimensão de órgãos."
+        tests:
+          - unique
+          - not_null
+      - name: nome_orgao_superior
+        description: "Nome do ministério ou órgão superior."
+        tests:
+          - not_null
+
+  # 3. Testes na Dimensão de Favorecidos
+  - name: dim_favorecidos
+    description: "Dimensão de Favorecidos e Estabelecimentos Comerciais."
+    columns:
+      - name: sk_favorecido
+        description: "Surrogate key da dimensão de fornecedores."
+        tests:
+          - unique
+          - not_null
+
+  # 4. Testes na Tabela Fato (com Integridade Referencial)
+  - name: fct_gastos_cartao
+    description: "Tabela fato com todas as transações de pagamento via cartão."
+    columns:
+      - name: id_transacao
+        tests:
+          - unique
+          - not_null
+      - name: vl_transacao
+        tests:
+          - not_null
+      - name: sk_orgao
+        description: "Chave estrangeira apontando para dim_orgaos."
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_orgaos')
+              field: sk_orgao
+      - name: sk_favorecido
+        description: "Chave estrangeira apontando para dim_favorecidos."
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_favorecidos')
+              field: sk_favorecido
