@@ -6,7 +6,7 @@ Cobre o histórico das transações e gera hierarquias temporais completas para 
 {{ config(materialized='table') }}
 
 WITH dates AS (
-    -- Gera todos os dias entre 2024 e 2026
+    -- Gera todos os dias entre 2023 e 2026
     SELECT UNNEST(GENERATE_SERIES(DATE '2023-01-01', DATE '2026-12-31', INTERVAL 1 DAY)) AS data_dia
 ),
 
@@ -19,7 +19,21 @@ calendario AS (
         EXTRACT(quarter FROM data_dia)::INTEGER AS trimestre,
         EXTRACT(month FROM data_dia)::INTEGER AS mes,
         strftime(data_dia, '%m/%Y') AS mes_ano,
-        strftime(data_dia, '%B') AS nome_mes,
+        -- Nome do mês em português, mapeado manualmente (strftime '%B' retorna em inglês no DuckDB)
+        CASE EXTRACT(month FROM data_dia)
+            WHEN 1  THEN 'Janeiro'
+            WHEN 2  THEN 'Fevereiro'
+            WHEN 3  THEN 'Março'
+            WHEN 4  THEN 'Abril'
+            WHEN 5  THEN 'Maio'
+            WHEN 6  THEN 'Junho'
+            WHEN 7  THEN 'Julho'
+            WHEN 8  THEN 'Agosto'
+            WHEN 9  THEN 'Setembro'
+            WHEN 10 THEN 'Outubro'
+            WHEN 11 THEN 'Novembro'
+            WHEN 12 THEN 'Dezembro'
+        END AS nome_mes,
         EXTRACT(day FROM data_dia)::INTEGER AS dia,
         EXTRACT(dayofweek FROM data_dia)::INTEGER AS dia_semana,
         CASE WHEN EXTRACT(dayofweek FROM data_dia) IN (0, 6) THEN TRUE ELSE FALSE END AS fl_fim_semana
