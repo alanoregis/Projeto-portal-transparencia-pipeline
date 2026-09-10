@@ -25,7 +25,9 @@ parsed AS (
         -- Conversão robusta de data (suporta 'DD/MM/YYYY' ou 'YYYY-MM-DD')
         COALESCE(
             TRY_STRPTIME(data_transacao::VARCHAR, '%d/%m/%Y')::DATE,
-            TRY_CAST(data_transacao::VARCHAR AS DATE)
+            TRY_CAST(data_transacao::VARCHAR AS DATE),
+            TRY_STRPTIME('01/' || mes_extrato::VARCHAR, '%d/%m/%Y')::DATE,
+            DATE '1900-01-01'
         ) AS dt_transacao,
 
         -- Conversão robusta de valor monetário (formato brasileiro '1.250,50' para numérico)
