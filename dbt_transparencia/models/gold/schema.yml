@@ -1,0 +1,109 @@
+version: 2
+
+models:
+
+  # ── DIMENSÕES ────────────────────────────────────────────────────────────────
+
+  - name: gold_dim_data
+    description: "Dimensão calendário (2024–2026) + Unknown Member (sk=19000101)."
+    columns:
+      - name: sk_data
+        description: "Surrogate key no formato YYYYMMDD (INTEGER)."
+        tests:
+          - unique
+          - not_null
+
+  - name: gold_dim_orgaos
+    description: "Dimensão de órgãos superiores, vinculados e unidades gestoras."
+    columns:
+      - name: sk_orgao
+        description: "Surrogate key gerada com cod_orgao_superior + cod_orgao_vinculado + cod_unidade_gestora."
+        tests:
+          - unique
+          - not_null
+
+  - name: gold_dim_favorecidos
+    description: "Dimensão de favorecidos — grão por nome/marca (filiais consolidadas)."
+    columns:
+      - name: sk_favorecido
+        description: "Surrogate key gerada por nome_favorecido."
+        tests:
+          - unique
+          - not_null
+
+  - name: gold_dim_portadores
+    description: "Dimensão de portadores do cartão."
+    columns:
+      - name: sk_portador
+        description: "Surrogate key gerada por CPF ou nome do portador."
+        tests:
+          - unique
+          - not_null
+
+  - name: gold_dim_nivel_alerta
+    description: "Dimensão estática de níveis de alerta com ordem de severidade e motivo."
+    columns:
+      - name: ordem_severidade
+        tests:
+          - unique
+          - not_null
+      - name: nivel_alerta
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['NORMAL', 'MODERADO', 'CRITICO']
+      - name: motivo_alerta
+        tests:
+          - not_null
+
+  # ── FATO ─────────────────────────────────────────────────────────────────────
+
+  - name: gold_fct_gastos_cartao
+    description: "Fato de gastos com cartão — Star Schema puro com Z-score e FK para dim_nivel_alerta."
+    columns:
+      - name: id_transacao
+        tests:
+          - unique
+          - not_null
+      - name: sk_data
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('gold_dim_data')
+                field: sk_data
+      - name: sk_orgao
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('gold_dim_orgaos')
+                field: sk_orgao
+      - name: sk_favorecido
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('gold_dim_favorecidos')
+                field: sk_favorecido
+      - name: sk_portador
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('gold_dim_portadores')
+                field: sk_portador
+      - name: ordem_severidade
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('gold_dim_nivel_alerta')
+                field: ordem_severidade
+      - name: vl_transacao
+        tests:
+          - not_null
+      - name: z_score
+        tests:
+          - not_null
