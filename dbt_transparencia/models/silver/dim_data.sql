@@ -6,7 +6,7 @@ Padrão Kimball com ordenação ISO (YYYY-MM) e Membro Desconhecido (19000101).
 {{ config(materialized='table') }}
 
 WITH dates AS (
-    SELECT UNNEST(GENERATE_SERIES(DATE '2020-01-01', DATE '2030-12-31', INTERVAL 1 DAY)) AS data_dia
+    SELECT UNNEST(GENERATE_SERIES(DATE '2023-01-01', DATE '2026-12-31', INTERVAL 1 DAY)) AS data_dia
 ),
 
 calendario AS (
