@@ -1,3 +1,6 @@
 {{ config(materialized='table') }}
 
-SELECT * FROM {{ ref('dim_portadores') }}
+SELECT
+    sk_portador,
+    nome_portador
+FROM {{ ref('dim_portadores') }}
