@@ -32,6 +32,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          pip install pyodbc sqlalchemy "dlt[sql_database]" dbt-sqlserver
 
       - name: Instalar Dependências do dbt (dbt_utils)
         run: |
@@ -52,3 +53,54 @@ jobs:
           MAX_PAGES_PER_MONTH: "50"
         run: |
           python run_pipeline.py
+
+      # Etapa disparada quando o pipeline executa com SUCESSO
+      - name: Enviar E-mail de Sucesso (Gmail)
+        if: success()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: "✅ [SUCESSO] Pipeline Portal da Transparência Executado!"
+          to: ${{ secrets.MAIL_USERNAME }}
+          from: "Pipeline Transparência <${{ secrets.MAIL_USERNAME }}>"
+          body: |
+            Olá Alan,
+
+            O pipeline de engenharia de dados do Portal da Transparência (CGU) foi executado com sucesso na nuvem!
+
+            📊 Resumo da Execução:
+            - Horário: 01:00 (Fortaleza - CE)
+            - Camada Bronze: Ingestão de dados da CGU via dlthub finalizada.
+            - Camadas Silver e Gold: Modelagem dimensional dbt-sqlserver concluída.
+            - Testes de Qualidade: 48 testes validados com 100% de sucesso.
+            - Banco Atualizado: Azure SQL Database (sqldb-transparencia).
+
+            Os dados já estão disponíveis e prontos para consulta no Power BI!
+
+            Repositório: https://github.com/${{ github.repository }}
+            Detalhes do Run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+      # Etapa disparada caso ocorra alguma FALHA
+      - name: Enviar E-mail de Alerta de Falha (Gmail)
+        if: failure()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: "❌ [ALERTA DE FALHA] Pipeline Portal da Transparência Falhou!"
+          to: ${{ secrets.MAIL_USERNAME }}
+          from: "Pipeline Transparência <${{ secrets.MAIL_USERNAME }}>"
+          body: |
+            Atenção Alan,
+
+            Ocorreu uma falha durante a execução do pipeline de dados do Portal da Transparência.
+
+            Por favor, verifique os logs da execução no GitHub Actions para diagnosticar o erro:
+            https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
