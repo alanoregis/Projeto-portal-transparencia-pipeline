@@ -210,7 +210,7 @@ Projeto-portal-transparencia-pipeline/
 4. **Configure o arquivo `.env` na raiz do projeto:**
    ```env
    AZURE_SQL_SERVER=seu-servidor.database.windows.net
-   AZURE_SQL_DATABASE=sqldb-transparencia
+   AZURE_SQL_DATABASE=seu-banco-de-dados
    AZURE_SQL_USER=seu_usuario
    AZURE_SQL_PASSWORD=sua_senha
    AZURE_SQL_DRIVER=ODBC Driver 17 for SQL Server
