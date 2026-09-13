@@ -13,6 +13,7 @@ from typing import Generator, Dict, Any
 
 from dotenv import load_dotenv
 import dlt
+import urllib.parse
 
 # Adiciona a raiz do projeto ao sys.path para garantir os imports
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -74,31 +75,44 @@ def transparencia_source():
     return cartoes_pagamento_resource
 
 
-def run_ingestion(duckdb_path: str = "data/portal_transparencia.duckdb"):
+
+def run_ingestion():
     """
-    Executa o pipeline dlt carregando os dados brutos no DuckDB (Schema Bronze).
-
+    Executa o pipeline dlt carregando os dados brutos no Azure SQL Database (Schema Bronze).
     """
-    logger.info("=== Iniciando Pipeline de Ingestão com dlt ===")
+    logger.info("=== Iniciando Pipeline de Ingestão com dlt -> Azure SQL ===")
 
-    # Garante que o diretório de destino existe
-    db_file = PROJECT_ROOT / duckdb_path
-    db_file.parent.mkdir(parents=True, exist_ok=True)
+    server = os.getenv("AZURE_SQL_SERVER")
+    database = os.getenv("AZURE_SQL_DATABASE")
+    user = os.getenv("AZURE_SQL_USER")
+    password = os.getenv("AZURE_SQL_PASSWORD")
+    driver = os.getenv("AZURE_SQL_DRIVER", "ODBC Driver 17 for SQL Server")
 
-    # Configura o pipeline dlt com destino DuckDB
+    # Codifica usuário e senha caso tenham caracteres especiais
+    user_encoded = urllib.parse.quote_plus(user)
+    pwd_encoded = urllib.parse.quote_plus(password)
+    driver_encoded = urllib.parse.quote_plus(driver)
+
+    # URL padrão SQLAlchemy para MSSQL com pyodbc
+    connection_url = (
+        f"mssql+pyodbc://{user_encoded}:{pwd_encoded}@{server}:1433/{database}"
+        f"?driver={driver_encoded}&Encrypt=yes&TrustServerCertificate=no"
+    )
+
+    # Configura o pipeline dlt com destino mssql
     pipeline = dlt.pipeline(
-        pipeline_name="portal_transparencia",
-        destination=dlt.destinations.duckdb(str(db_file)),
+        pipeline_name="transparencia_azure",
+        destination=dlt.destinations.mssql(connection_url),
         dataset_name="bronze",
     )
 
-    logger.info(f"Destino DuckDB configurado: {db_file}")
+    logger.info(f"Destino configurado: Azure SQL Database [{database}] no schema [bronze]")
     load_info = pipeline.run(transparencia_source())
 
-    logger.info("=== Ingestão dlt Concluida com Sucesso! ===")
+    logger.info("=== Ingestão dlt Concluída com Sucesso! ===")
     logger.info(f"Informações de Carga:\n{load_info}")
     return load_info
 
+
 if __name__ == "__main__":
-    duckdb_env_path = os.getenv("DUCKDB_PARTH", "data/portal_transparencia.duckdb")
-    run_ingestion(duckdb_env_path)
+    run_ingestion()

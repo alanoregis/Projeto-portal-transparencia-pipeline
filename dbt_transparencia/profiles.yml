@@ -2,7 +2,13 @@ dbt_transparencia:
   target: dev
   outputs:
     dev:
-      type: duckdb
-      path: "{{ env_var('DBT_DUCKDB_PATH', 'data/portal_transparencia.duckdb') }}"
-      schema: dev
+      type: sqlserver
+      driver: "{{ env_var('AZURE_SQL_DRIVER', 'ODBC Driver 17 for SQL Server') }}"
+      server: "{{ env_var('AZURE_SQL_SERVER') }}"
+      port: 1433
+      database: "{{ env_var('AZURE_SQL_DATABASE') }}"
+      schema: dbo
+      user: "{{ env_var('AZURE_SQL_USER') }}"
+      password: "{{ env_var('AZURE_SQL_PASSWORD') }}"
+      trust_cert: false
       threads: 4

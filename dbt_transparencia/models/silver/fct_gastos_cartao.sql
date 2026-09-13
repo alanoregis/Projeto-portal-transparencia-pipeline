@@ -1,8 +1,3 @@
-/*
-Tabela Fato de Gastos com Cartão de Pagamento (CPGF).
-Star Schema Puro (Kimball).
-*/
-
 {{ config(materialized='table') }}
 
 WITH staging AS (
@@ -11,8 +6,8 @@ WITH staging AS (
 
 SELECT
     s.id_transacao,
-    -- FK para dim_data (formato YYYYMMDD)
-    COALESCE(CAST(strftime(s.dt_transacao, '%Y%m%d') AS INTEGER), 19000101) AS sk_data,
+    -- FK para dim_data (formato YYYYMMDD estilo 112 no T-SQL)
+    COALESCE(CAST(CONVERT(VARCHAR(8), s.dt_transacao, 112) AS INT), 19000101) AS sk_data,
     -- FK para dim_orgaos
     {{ dbt_utils.generate_surrogate_key([
         's.cod_orgao_superior',

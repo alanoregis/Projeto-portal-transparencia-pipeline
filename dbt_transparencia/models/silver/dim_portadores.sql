@@ -1,7 +1,3 @@
-/*
-Dimensão de Portadores do Cartão de Pagamento.
-*/
-
 {{ config(materialized='table') }}
 
 WITH staging AS (
@@ -12,12 +8,12 @@ distinct_portadores AS (
     SELECT
         nome_portador,
         cpf_portador,
-        _dlt_load_id
+        _dlt_load_id,
+        ROW_NUMBER() OVER (
+            PARTITION BY COALESCE(NULLIF(cpf_portador, 'NAO INFORMADO'), nome_portador)
+            ORDER BY _dlt_load_id DESC
+        ) AS rn
     FROM staging
-    QUALIFY ROW_NUMBER() OVER (
-        PARTITION BY COALESCE(NULLIF(cpf_portador, 'NAO INFORMADO'), nome_portador)
-        ORDER BY _dlt_load_id DESC
-    ) = 1
 )
 
 SELECT
@@ -25,3 +21,4 @@ SELECT
     nome_portador,
     cpf_portador
 FROM distinct_portadores
+WHERE rn = 1
