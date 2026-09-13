@@ -1,4 +1,4 @@
-{{ config(materialized='table') }}
+{{ config(materialized='table', alias='fct_gastos_cartao') }}
 
 WITH base AS (
     SELECT
