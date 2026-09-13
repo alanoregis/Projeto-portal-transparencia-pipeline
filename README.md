@@ -229,7 +229,7 @@ Projeto-portal-transparencia-pipeline/
 ---
 
 ## 👨‍💻 Autor
-**Alan Regis**  
-*Estudante de Engenharia de Dados & Cloud Computing (Escola da Nuvem)*  
+**Alano Regis**  
+*Estudante de Engenharia de Dados & Cloud Computing*  
 - LinkedIn: [linkedin.com/in/alanoregis](https://www.linkedin.com/in/alanoregis/)  
 - GitHub: [@alanoregis](https://github.com/alanoregis)
