@@ -10,16 +10,16 @@ distinct_favorecidos AS (
         cgc_favorecido,
         -- Extrai a raiz do CNPJ (8 primeiros dígitos antes da barra de filial)
         CASE 
-            WHEN cgc_favorecido LIKE '%/%' THEN SPLIT_PART(cgc_favorecido, '/', 1)
+            WHEN cgc_favorecido LIKE '%/%' THEN 
+                SUBSTRING(cgc_favorecido, 1, CHARINDEX('/', cgc_favorecido) - 1)
             ELSE cgc_favorecido 
         END AS cnpj_raiz,
-        _dlt_load_id
+        _dlt_load_id,
+        ROW_NUMBER() OVER (
+            PARTITION BY nome_favorecido 
+            ORDER BY _dlt_load_id DESC
+        ) AS rn
     FROM staging
-    -- Garante estritamente 1 linha por Nome de Estabelecimento/Marca
-    QUALIFY ROW_NUMBER() OVER (
-        PARTITION BY nome_favorecido 
-        ORDER BY _dlt_load_id DESC
-    ) = 1
 )
 
 SELECT
@@ -28,3 +28,4 @@ SELECT
     cnpj_raiz,
     cgc_favorecido AS cgc_exemplo_filial
 FROM distinct_favorecidos
+WHERE rn = 1

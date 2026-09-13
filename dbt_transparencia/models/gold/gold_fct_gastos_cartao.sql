@@ -1,9 +1,3 @@
-/*
-  Camada Gold — Fato de Gastos com Cartão de Pagamento.
-  Star Schema puro com Z-score e classificação de alerta por órgão.
-  Referencia as dims da própria Gold (não da Silver diretamente).
-*/
-
 {{ config(materialized='table') }}
 
 WITH base AS (
@@ -15,15 +9,15 @@ WITH base AS (
         f.sk_portador,
         f.vl_transacao,
         o.nome_orgao_superior
-    FROM {{ ref('fct_gastos_cartao') }} f          -- silver.fct_gastos_cartao
-    JOIN {{ ref('dim_orgaos') }} o ON f.sk_orgao = o.sk_orgao
+    FROM {{ ref('fct_gastos_cartao') }} f
+    JOIN {{ ref('gold_dim_orgaos') }} o ON f.sk_orgao = o.sk_orgao
 ),
 
 stats_por_orgao AS (
     SELECT
         nome_orgao_superior,
-        AVG(vl_transacao)    AS media_gasto_orgao,
-        STDDEV(vl_transacao) AS stddev_gasto_orgao
+        AVG(vl_transacao)   AS media_gasto_orgao,
+        STDEV(vl_transacao) AS stddev_gasto_orgao
     FROM base
     GROUP BY nome_orgao_superior
 ),
@@ -35,8 +29,8 @@ scored AS (
         b.sk_orgao,
         b.sk_favorecido,
         b.sk_portador,
-        b.vl_transacao::DECIMAL(18,2)                        AS vl_transacao,
-        s.media_gasto_orgao::DECIMAL(18,2)                   AS media_orgao,
+        CAST(b.vl_transacao AS DECIMAL(18,2)) AS vl_transacao,
+        CAST(s.media_gasto_orgao AS DECIMAL(18,2)) AS media_orgao,
         CASE
             WHEN COALESCE(s.stddev_gasto_orgao, 0) = 0 THEN 0.0
             ELSE ROUND(

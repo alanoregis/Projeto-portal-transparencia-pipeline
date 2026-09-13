@@ -1,8 +1,3 @@
-/*
-Dimensão de Órgãos e Unidades Gestoras do Governo Federal.
-Padrão Industrial com dbt_utils.generate_surrogate_key
-*/
-
 {{ config(materialized='table') }}
 
 WITH staging AS (
@@ -17,12 +12,12 @@ distinct_orgaos AS (
         nome_orgao_vinculado,
         cod_unidade_gestora,
         nome_unidade_gestora,
-        _dlt_load_id
+        _dlt_load_id,
+        ROW_NUMBER() OVER (
+            PARTITION BY cod_orgao_superior, cod_orgao_vinculado, cod_unidade_gestora
+            ORDER BY _dlt_load_id DESC
+        ) AS rn
     FROM staging
-    QUALIFY ROW_NUMBER() OVER (
-        PARTITION BY cod_orgao_superior, cod_orgao_vinculado, cod_unidade_gestora 
-        ORDER BY _dlt_load_id DESC
-    ) = 1
 )
 
 SELECT
@@ -38,3 +33,4 @@ SELECT
     cod_unidade_gestora,
     nome_unidade_gestora
 FROM distinct_orgaos
+WHERE rn = 1
