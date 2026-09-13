@@ -50,6 +50,6 @@ jobs:
           INGESTION_MODE: "api"
           EXTRACT_MES_EXTRATO_INICIO: "01/2024"
           EXTRACT_MES_EXTRATO_FIM: "08/2026"
-          MAX_PAGES_PER_MONTH: "100"
+          MAX_PAGES_PER_MONTH: "50"
         run: |
           python run_pipeline.py
