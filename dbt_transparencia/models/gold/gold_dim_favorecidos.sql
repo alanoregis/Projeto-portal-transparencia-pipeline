@@ -1,4 +1,4 @@
-{{ config(materialized='table') }}
+{{ config(materialized='table', alias='dim_favorecidos') }}
 
 SELECT 
     sk_favorecido,

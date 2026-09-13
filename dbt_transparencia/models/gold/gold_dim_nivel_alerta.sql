@@ -3,7 +3,7 @@
   Tabela estática com ordem de severidade para ordenação correta no Power BI.
 */
 
-{{ config(materialized='table') }}
+{{ config(materialized='table', alias='dim_nivel_alerta') }}
 
 SELECT
     1                                                              AS ordem_severidade,
