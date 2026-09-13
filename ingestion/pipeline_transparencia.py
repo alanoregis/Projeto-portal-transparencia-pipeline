@@ -82,11 +82,17 @@ def run_ingestion():
     """
     logger.info("=== Iniciando Pipeline de Ingestão com dlt -> Azure SQL ===")
 
-    server = os.getenv("AZURE_SQL_SERVER")
-    database = os.getenv("AZURE_SQL_DATABASE")
-    user = os.getenv("AZURE_SQL_USER")
-    password = os.getenv("AZURE_SQL_PASSWORD")
-    driver = os.getenv("AZURE_SQL_DRIVER", "ODBC Driver 17 for SQL Server")
+    server = os.getenv("AZURE_SQL_SERVER", "").strip()
+    database = os.getenv("AZURE_SQL_DATABASE", "").strip()
+    user = os.getenv("AZURE_SQL_USER", "").strip()
+    password = os.getenv("AZURE_SQL_PASSWORD", "").strip()
+    driver = os.getenv("AZURE_SQL_DRIVER", "ODBC Driver 17 for SQL Server").strip()
+
+    if not server or not database or not user or not password:
+        raise ValueError(
+            f"Credenciais do Azure SQL incompletas! "
+            f"server='{server}', database='{database}', user='{user}'"
+        )
 
     # Codifica usuário e senha caso tenham caracteres especiais
     user_encoded = urllib.parse.quote_plus(user)
@@ -102,7 +108,7 @@ def run_ingestion():
     # Configura o pipeline dlt com destino mssql
     pipeline = dlt.pipeline(
         pipeline_name="transparencia_azure",
-        destination=dlt.destinations.mssql(connection_url),
+        destination=dlt.destinations.mssql(credentials=connection_url),
         dataset_name="bronze",
     )
 
