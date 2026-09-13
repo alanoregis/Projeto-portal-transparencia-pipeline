@@ -54,27 +54,27 @@ models:
         tests:
           - not_null
           - relationships:
-            arguments:
-              to: ref('dim_data')
-              field: sk_data
+              arguments:
+                to: ref('dim_data')
+                field: sk_data
       - name: sk_orgao
         tests:
           - not_null
           - relationships:
-            arguments:
-              to: ref('dim_orgaos')
-              field: sk_orgao
+              arguments:
+                to: ref('dim_orgaos')
+                field: sk_orgao
       - name: sk_favorecido
         tests:
           - not_null
           - relationships:
-            arguments:
-              to: ref('dim_favorecidos')
-              field: sk_favorecido
+              arguments:
+                to: ref('dim_favorecidos')
+                field: sk_favorecido
       - name: sk_portador
         tests:
           - not_null
           - relationships:
-            arguments:
-              to: ref('dim_portadores')
-              field: sk_portador
+              arguments:
+                to: ref('dim_portadores')
+                field: sk_portador
