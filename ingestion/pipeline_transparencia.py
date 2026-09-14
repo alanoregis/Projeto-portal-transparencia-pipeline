@@ -14,6 +14,9 @@ from typing import Generator, Dict, Any
 from dotenv import load_dotenv
 import dlt
 import urllib.parse
+import time
+import pyodbc
+from dlt.pipeline.exceptions import PipelineStepFailed
 
 # Adiciona a raiz do projeto ao sys.path para garantir os imports
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -76,7 +79,7 @@ def transparencia_source():
 
 
 
-def run_ingestion():
+def run_ingestion(max_retries: int = 4, backoff_factor: float = 2.0):
     """
     Executa o pipeline dlt carregando os dados brutos no Azure SQL Database (Schema Bronze).
     """
@@ -100,9 +103,11 @@ def run_ingestion():
     driver_encoded = urllib.parse.quote_plus(driver)
 
     # URL padrão SQLAlchemy para MSSQL com pyodbc
+    # Connect Timeout aumentado para dar tempo do Azure SQL Serverless "acordar" (auto-pause)
     connection_url = (
         f"mssql+pyodbc://{user_encoded}:{pwd_encoded}@{server}:1433/{database}"
         f"?driver={driver_encoded}&Encrypt=yes&TrustServerCertificate=no"
+        f"&Connect+Timeout=60"
     )
 
     # Configura o pipeline dlt com destino mssql
@@ -113,11 +118,32 @@ def run_ingestion():
     )
 
     logger.info(f"Destino configurado: Azure SQL Database [{database}] no schema [bronze]")
-    load_info = pipeline.run(transparencia_source())
 
-    logger.info("=== Ingestão dlt Concluída com Sucesso! ===")
-    logger.info(f"Informações de Carga:\n{load_info}")
-    return load_info
+    for attempt in range(1, max_retries + 1):
+        try:
+            load_info = pipeline.run(transparencia_source())
+            logger.info("=== Ingestão dlt Concluída com Sucesso! ===")
+            logger.info(f"Informações de Carga:\n{load_info}")
+            return load_info
+
+        except PipelineStepFailed as exc:
+            banco_pausado = (
+                isinstance(exc.__cause__, pyodbc.Error)
+                and "40613" in str(exc.__cause__)
+            )
+
+            if banco_pausado and attempt < max_retries:
+                sleep_time = backoff_factor ** attempt
+                logger.warning(
+                    f"Banco Azure SQL indisponível (erro 40613, provável auto-pause do Serverless). "
+                    f"Aguardando {sleep_time:.1f}s antes da tentativa {attempt}/{max_retries}..."
+                )
+                time.sleep(sleep_time)
+                continue
+
+            if banco_pausado:
+                logger.error(f"Falha definitiva após {max_retries} tentativas: banco não retomou a tempo. {exc}")
+            raise
 
 
 if __name__ == "__main__":
