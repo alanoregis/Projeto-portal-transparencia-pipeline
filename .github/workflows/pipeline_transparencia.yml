@@ -1,9 +1,9 @@
 name: Pipeline Portal da Transparência (Diário)
 
 on:
-  # Agendamento diário: 04:00 UTC = 01:00 da manhã no horário de Fortaleza (UTC-3)
+  # Agendamento diário: da manhã no horário de Fortaleza (UTC-3)
   schedule:
-    - cron: '15 3 * * *'
+    - cron: '37 3 * * *'
   # Permite disparar manualmente pelo botão "Run workflow" no GitHub
   workflow_dispatch:
 
@@ -68,7 +68,7 @@ jobs:
           to: ${{ secrets.MAIL_USERNAME }}
           from: "Pipeline Transparência <${{ secrets.MAIL_USERNAME }}>"
           body: |
-            Olá Alan,
+            Olá Alano,
 
             O pipeline de engenharia de dados do Portal da Transparência (CGU) foi executado com sucesso na nuvem!
 
