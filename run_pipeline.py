@@ -84,16 +84,16 @@ def print_gold_summary():
 
             # Tabela fato
             fato_tables = [
-                ("gold.gold_fct_gastos_cartao", "Fato principal — gastos com Z-score e nível de alerta"),
+                ("gold.fct_gastos_cartao", "Fato principal — gastos com Z-score e nível de alerta"),
             ]
 
             # Dimensões
             dim_tables = [
-                ("gold.gold_dim_data",         "Dimensão calendário 2023-2026 + Unknown Member"),
-                ("gold.gold_dim_orgaos",        "Dimensão de órgãos superiores e unidades gestoras"),
-                ("gold.gold_dim_favorecidos",   "Dimensão de favorecidos (grão por marca/nome)"),
-                ("gold.gold_dim_portadores",    "Dimensão de portadores do cartão"),
-                ("gold.gold_dim_nivel_alerta",  "Dimensão de alertas: NORMAL / MODERADO / CRITICO"),
+                ("gold.dim_data",         "Dimensão calendário 2023-2026 + Unknown Member"),
+                ("gold.dim_orgaos",        "Dimensão de órgãos superiores e unidades gestoras"),
+                ("gold.dim_favorecidos",   "Dimensão de favorecidos (grão por marca/nome)"),
+                ("gold.dim_portadores",    "Dimensão de portadores do cartão"),
+                ("gold.dim_nivel_alerta",  "Dimensão de alertas: NORMAL / MODERADO / CRITICO"),
             ]
 
             print("\n📊 FATO:")
