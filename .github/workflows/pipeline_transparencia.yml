@@ -3,7 +3,7 @@ name: Pipeline Portal da Transparência (Diário)
 on:
   # Agendamento diário: da manhã no horário de Fortaleza (UTC-3)
   schedule:
-    - cron: '37 0 * * *'
+    - cron: '37 2 * * *'
   # Permite disparar manualmente pelo botão "Run workflow" no GitHub
   workflow_dispatch:
 
