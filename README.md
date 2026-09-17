@@ -23,7 +23,6 @@
 5. [Modelagem de Dados](#5-modelagem-de-dados)
 6. [Decisões Técnicas e Desafios](#6-decisões-técnicas-e-desafios)
 7. [Resultados e Qualidade de Dados](#7-resultados-e-qualidade-de-dados)
-8. [Próximos Passos](#8-próximos-passos)
 
 ---
 
@@ -31,36 +30,7 @@
 
 Pipeline end-to-end com execução diária automatizada via GitHub Actions:
 
-```mermaid
-flowchart LR
-    A["🌐 API CGU\nPortal da Transparência"] -->|"HTTP REST\npaginado"| B
-
-    subgraph INGESTION["⚙️ Ingestão — dlt (dlthub)"]
-        B["cartoes_pagamento\nresource"]
-    end
-
-    B -->|"write_disposition: replace\nmssql+pyodbc"| C
-
-    subgraph AZURE["☁️ Azure SQL Database — Serverless Gen5 / Brazil South"]
-        C["🥉 bronze\nDados brutos CGU"]
-        C --> D["🥈 silver\nStaging + limpeza"]
-        D --> E["🥇 gold\nStar Schema"]
-    end
-
-    subgraph DBT["🔧 Transformação — dbt-sqlserver"]
-        D
-        E
-    end
-
-    E -->|"SELECT only\nImport Mode"| F["📊 Power BI\nDashboards"]
-
-    subgraph CICD["🤖 GitHub Actions — Diário 01:00 Fortaleza"]
-        G["1. dlt ingest\n2. dbt run\n3. dbt test\n4. Email ✅/❌"]
-    end
-
-    CICD -.->|"orquestra"| INGESTION
-    CICD -.->|"orquestra"| DBT
-```
+![Arquitetura do Pipeline](docs/images/pipeline_architecture.png)
 
 **Fluxo resumido:**
 
@@ -224,6 +194,9 @@ Projeto-portal-transparencia-pipeline/
 │   ├── profiles.yml                    # Conexão via env vars
 │   └── packages.yml                    # dbt_utils
 │
+├── docs/
+│   └── images/                         # Screenshots e diagramas do projeto
+│
 ├── run_pipeline.py                     # Orquestrador: dlt → dbt run → dbt test
 ├── requirements.txt                    # Dependências Python
 └── Dockerfile                          # Imagem para execução containerizada
@@ -233,40 +206,11 @@ Projeto-portal-transparencia-pipeline/
 
 ## 5. Modelagem de Dados
 
-### Star Schema — Camada Gold
+### Star Schema — Camada Gold (Power BI Model View)
 
-```
-                    ┌─────────────────────┐
-                    │    dim_data         │
-                    │─────────────────────│
-                    │ sk_data (PK)        │
-                    │ dt_data             │
-                    │ ano / mes / dia     │
-                    │ nome_mes (pt-BR)    │
-                    │ trimestre / semana  │
-                    └──────────┬──────────┘
-                               │
-         ┌─────────────────────┼──────────────────────┐
-         │                     │                      │
-┌────────┴────────┐  ┌─────────┴────────────┐  ┌─────┴────────────────┐
-│   dim_orgaos    │  │  fct_gastos_cartao   │  │  dim_favorecidos     │
-│─────────────────│  │──────────────────────│  │──────────────────────│
-│ sk_orgao (PK)   │  │ sk_gasto (PK)        │  │ sk_favorecido (PK)   │
-│ cod_orgao_sup   │  │ sk_data (FK)         │  │ nome_favorecido      │
-│ nome_orgao_sup  │  │ sk_orgao (FK)        │  │ cnpj_cpf_favorecido  │
-│ cod_ug          │  │ sk_favorecido (FK)   │  └──────────────────────┘
-│ nome_ug         │  │ sk_portador (FK)     │
-└─────────────────┘  │ sk_nivel_alerta (FK) │  ┌──────────────────────┐
-                     │ valor_transacao      │  │  dim_portadores      │
-┌─────────────────┐  │ zscore_valor         │  │──────────────────────│
-│dim_nivel_alerta │  │ tipo_transacao       │  │ sk_portador (PK)     │
-│─────────────────│  └──────────────────────┘  │ nome_portador        │
-│ sk_nivel (PK)   │                             │ cpf_portador         │
-│ nivel_alerta    │                             └──────────────────────┘
-│ descricao_nivel │
-│ faixa_zscore    │
-└─────────────────┘
-```
+![Star Schema no Power BI](docs/images/powerbi_model_view.png)
+
+A camada Gold entrega 6 tabelas prontas para consumo no Power BI conectadas em Star Schema: uma tabela fato central (`fct_gastos_cartao`) ligada a 5 dimensões (`dim_data`, `dim_orgaos`, `dim_favorecidos`, `dim_portadores`, `dim_nivel_alerta`).
 
 ### Classificação de Anomalia (Z-score)
 
@@ -280,8 +224,6 @@ zscore_valor = (valor_transacao - AVG(valor_transacao) OVER ())
 -- |Z| < 3.0  →  MODERADO  
 -- |Z| >= 3.0 →  CRÍTICO
 ```
-
-> 📸 **Recomendação visual:** Adicione um screenshot da **Model View do Power BI** mostrando as tabelas Gold e seus relacionamentos como um Star Schema. Salve em `docs/images/powerbi_model_view.png` e referencie aqui.
 
 ---
 
@@ -323,7 +265,7 @@ O projeto nasceu com DuckDB local. A migração exigiu reescrever **todos os mod
 | `dbt_utils.date_spine` | Tally table com `CROSS JOIN` |
 | `col::DATE` | `CAST(col AS DATE)` |
 
-**Desafio específico:** `dbt_utils.date_spine` gera CTE recursivo que estoura o limite de **100 recursões** do SQL Server. Substituí por **tally table** (cross join de números) que gera datas sem recursão — solução mais performática.
+**Desafio específico:** `dbt_utils.date_spine` gera CTE recursivo que estoura o limite de **100 recursões** do SQL Server. Substituí por **tally table** (cross join de números) — mais performático e sem limite.
 
 ---
 
@@ -347,11 +289,13 @@ A API bloqueia a chave por **8 horas** ao exceder o limite. A chave foi bloquead
 
 ## 7. Resultados e Qualidade de Dados
 
+### Pipeline executado com sucesso
+
+![Resumo Gold após execução do pipeline](docs/images/resume_gold.png)
+
 ### Testes dbt — 100% de aprovação
 
-```
-PASS=48  WARN=0  ERROR=0  SKIP=0  TOTAL=48
-```
+![dbt test results](docs/images/dbt_test_results.png)
 
 | Tipo de Teste | O que valida |
 |--------------|--------------|
@@ -360,34 +304,9 @@ PASS=48  WARN=0  ERROR=0  SKIP=0  TOTAL=48
 | `relationships` | Integridade referencial: cada FK da fato existe na dimensão |
 | `accepted_values` | `nivel_alerta` ∈ {NORMAL, MODERADO, CRÍTICO} |
 
-### Tabelas Gold entregues
+### GitHub Actions — Execução diária automatizada
 
-| Tabela | Descrição |
-|--------|-----------|
-| `gold.fct_gastos_cartao` | Fato principal: gastos com Z-score + nível de alerta |
-| `gold.dim_data` | Calendário 2023–2026 com Unknown Member |
-| `gold.dim_orgaos` | Órgãos superiores e unidades gestoras |
-| `gold.dim_favorecidos` | Beneficiários dos pagamentos |
-| `gold.dim_portadores` | Portadores do cartão corporativo |
-| `gold.dim_nivel_alerta` | Classificação de anomalia por Z-score |
-
-> 📸 **Recomendação:** Screenshot do terminal com `PASS=48 WARN=0 ERROR=0` em `docs/images/dbt_test_results.png`
-
-> 📸 **Recomendação:** Screenshot do GitHub Actions com execução verde em `docs/images/github_actions_success.png`
-
----
-
-## 8. Próximos Passos
-
-| Prioridade | Melhoria | Impacto |
-|-----------|----------|---------|
-| 🔴 Alta | **Ingestão incremental** — substituir `replace` por `append` com watermark por data | Menos requisições à API CGU; histórico preservado |
-| 🔴 Alta | **Power BI Service** — publicar dashboard com refresh automático | Acessível via browser sem Power BI Desktop |
-| 🟡 Média | **Orquestrador robusto** — Prefect ou Dagster com DAG visual e retry por etapa | Observabilidade e rastreabilidade de falhas |
-| 🟡 Média | **Expandir domínio** — outras APIs da CGU: diárias, servidores, licitações | Análises cruzadas mais ricas |
-| 🟡 Média | **Anomaly detection com ML** — Isolation Forest substituindo Z-score estático | Maior acurácia, menos falsos positivos |
-| 🟢 Baixa | **dbt docs publicados** — GitHub Pages com documentação interativa do modelo | Portfólio e onboarding de novos analistas |
-| 🟢 Baixa | **dbt expectations** — testes de distribuição e ranges esperados | Cobertura de qualidade ainda mais robusta |
+![GitHub Actions success](docs/images/github_actions_success.png)
 
 ---
 
