@@ -30,7 +30,7 @@
 
 Pipeline end-to-end com execução diária automatizada via GitHub Actions:
 
-![Arquitetura do Pipeline](docs/images/pipeline_architecture.png)
+![Arquitetura do Pipeline](docs/images/API_CGU_Data_Pipeline_Architecture.png)
 
 **Fluxo resumido:**
 
@@ -312,7 +312,7 @@ A API bloqueia a chave por **8 horas** ao exceder o limite. A chave foi bloquead
 
 ## 👤 Autor
 
-**Alan Regis**
+**Alano Regis**
 📍 Fortaleza - CE, Brasil
 💼 [linkedin.com/in/alanoregis](https://linkedin.com/in/alanoregis)
 🐙 [github.com/alanoregis](https://github.com/alanoregis)
