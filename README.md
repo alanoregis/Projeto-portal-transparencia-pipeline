@@ -283,7 +283,9 @@ GitHub Actions foi a solução: gratuito, integrado, e permite instalar o ODBC D
 
 A API bloqueia a chave por **8 horas** ao exceder o limite. A chave foi bloqueada durante testes com `MAX_PAGES_PER_MONTH=100`.
 
-**Solução:** Produção usa `MAX_PAGES_PER_MONTH=50` + modo `INGESTION_MODE=sample` para desenvolvimento local sem consumir cota da API.
+**Solução:** Segundo a documentação da API do Portal da Transparência, a janela entre 00:00 e 06:00 apresenta menor volume de requisições concorrentes, permitindo um limite mais alto sem risco de bloqueio. A pipeline foi automatizada para rodar de madrugada dentro desse horário, o que possibilitou aumentar o MAX_PAGES_PER_MONTH em produção com segurança.
+
+Para desenvolvimento local, mantém-se o modo INGESTION_MODE=sample, evitando consumir a cota da API durante testes..
 
 ---
 
@@ -310,12 +312,14 @@ A API bloqueia a chave por **8 horas** ao exceder o limite. A chave foi bloquead
 
 ---
 
-## 👤 Autor
 
-**Alano Regis**
-📍 Fortaleza - CE, Brasil
-💼 [linkedin.com/in/alanoregis](https://linkedin.com/in/alanoregis)
-🐙 [github.com/alanoregis](https://github.com/alanoregis)
+## 👨‍💻 Autor
+
+**Alano Regis** — Engenheiro de Dados Júnior 📍 Fortaleza - CE, Brasil
+
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-0A66C2?style=flat&logo=linkedin&logoColor=white)](https://linkedin.com/in/alanoregis)
+[![GitHub](https://img.shields.io/badge/GitHub-181717?style=flat&logo=github&logoColor=white)](https://github.com/alanoregis)
+[![Email](https://img.shields.io/badge/Email-EA4335?style=flat&logo=gmail&logoColor=white)](mailto:alano.120.ar@gmail.com)
 
 ---
 
