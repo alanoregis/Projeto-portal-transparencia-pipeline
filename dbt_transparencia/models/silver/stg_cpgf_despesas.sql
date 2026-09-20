@@ -39,20 +39,8 @@ parsed AS (
         ) AS vl_transacao,
 
         -- Dados do Estabelecimento / Favorecido
-        -- A API CGU retorna o nome no formato "00.110.647 NOME DO FAVORECIDO"
-        -- Remove o prefixo CNPJ/CPF (dígitos e pontos antes do primeiro espaço)
-        UPPER(LTRIM(RTRIM(
-            CASE
-                WHEN PATINDEX('[0-9]%', LTRIM(RTRIM(COALESCE(estabelecimento__nome, 'NAO INFORMADO')))) = 1
-                     AND CHARINDEX(' ', LTRIM(RTRIM(COALESCE(estabelecimento__nome, 'NAO INFORMADO')))) > 0
-                THEN SUBSTRING(
-                        LTRIM(RTRIM(COALESCE(estabelecimento__nome, 'NAO INFORMADO'))),
-                        CHARINDEX(' ', LTRIM(RTRIM(COALESCE(estabelecimento__nome, 'NAO INFORMADO')))) + 1,
-                        LEN(LTRIM(RTRIM(COALESCE(estabelecimento__nome, 'NAO INFORMADO'))))
-                     )
-                ELSE LTRIM(RTRIM(COALESCE(estabelecimento__nome, 'NAO INFORMADO')))
-            END
-        ))) AS nome_favorecido,
+        -- (Higienização de documentos sensíveis realizada via Regex na camada de Ingestão)
+        UPPER(LTRIM(RTRIM(COALESCE(estabelecimento__nome, 'NAO INFORMADO')))) AS nome_favorecido,
         LTRIM(RTRIM(COALESCE(estabelecimento__cgc, 'NAO INFORMADO'))) AS cgc_favorecido,
 
         -- Dados do Portador do Cartão

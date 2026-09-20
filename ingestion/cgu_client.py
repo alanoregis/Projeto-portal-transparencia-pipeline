@@ -6,6 +6,7 @@ Documentação: https://api.portaldatransparencia.gov.br/swagger-ui/index.html
 
 import time
 import logging
+import re
 from typing import Dict, Any, Generator, Optional
 import requests
 
@@ -27,6 +28,33 @@ def normalize_to_mm_aaaa(val: str, default_month: int, default_year: int = 2026)
         return f"{default_month:02d}/{val}"
     return f"{default_month:02d}/{default_year}"
 
+def sanitize_nome_favorecido(nome: str) -> str:
+    """
+    Higieniza o nome do favorecido removendo documentos (CPF/CNPJ) vazados pela API,
+    preservando nomes legítimos de empresas que iniciam com números (ex: '100 FRONTEIRA').
+    """
+    if not nome:
+        return "NAO INFORMADO"
+    
+    texto = str(nome).strip()
+
+    # 1. CNPJ ou Raiz no início: ex "00.110.647 NOME" ou "00.110.647/0001-00 - NOME"
+    texto = re.sub(r'^\d{2}\.\d{3}\.\d{3}(/\d{4}-\d{2})?\s*[-–]?\s*', '', texto)
+
+    # 2. CNPJ puro de 14 dígitos no início
+    texto = re.sub(r'^\d{14}\s*[-–]?\s*', '', texto)
+
+    # 3. Sufixo explícito "- CPF ...", "CPF: ...", "- CNPJ ..." no final
+    texto = re.sub(r'\s*[-–]?\s*(CPF|CNPJ)[:\s]*[\d\.\-\*]+$', '', texto, flags=re.IGNORECASE)
+
+    # 4. CPF numérico puro de 11 dígitos no final
+    texto = re.sub(r'\s+\d{11}$', '', texto)
+
+    # 5. CNPJ numérico puro de 14 dígitos no final
+    texto = re.sub(r'\s+\d{14}$', '', texto)
+
+    return texto.strip().upper() or "NAO INFORMADO"
+
 def normalize_record(raw: Dict[str, Any]) -> Dict[str, Any]:
     """
     Padroniza a estrutura do registro retornado pela API da CGU para o schema do pipeline.
@@ -46,12 +74,13 @@ def normalize_record(raw: Dict[str, Any]) -> Dict[str, Any]:
         or estabelecimento.get("cgc")
         or "NAO INFORMADO"
     )
-    nome_est = (
+    nome_raw = (
         estabelecimento.get("nome")
         or estabelecimento.get("razaoSocialReceita")
         or estabelecimento.get("nomeFantasiaReceita")
         or "NAO INFORMADO"
     )
+    nome_est = sanitize_nome_favorecido(nome_raw)
 
     cpf_portador = portador.get("cpfFormatado") or portador.get("cpf") or "NAO INFORMADO"
     nome_portador = portador.get("nome") or "NAO INFORMADO"
