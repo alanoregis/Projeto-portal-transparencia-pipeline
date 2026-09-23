@@ -27,6 +27,7 @@ def get_executable(name: str) -> str:
 
 PYTHON_EXE = get_executable("python")
 DBT_EXE = get_executable("dbt")
+PYTEST_EXE = get_executable("pytest")
 
 
 def log_step(step_number: int, title: str):
@@ -120,6 +121,13 @@ def main():
     print("🏛️  PIPELINE DE ENGENHARIA DE DADOS - PORTAL DA TRANSPARÊNCIA (CGU)")
     print("    Arquitetura Medalhão: Ingestão dlt -> Azure SQL Database -> dbt")
     print("#" * 70)
+
+    # Etapa 0 — Testes Unitários de Código (Fail-Fast)
+    log_step(0, "Validação de Código e Resiliência (Testes Unitários pytest)")
+    run_command(
+        [str(PYTEST_EXE), "tests/", "-v"],
+        status_hint="Executando testes unitários de sanitização, cliente CGU e Azure SQL..."
+    )
 
     # Etapa 1 — Ingestão com dlt
     log_step(1, "Ingestão de Dados com dlthub (Camada Bronze no Azure SQL)")
