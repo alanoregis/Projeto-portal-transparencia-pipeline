@@ -45,7 +45,7 @@ def sanitize_nome_favorecido(nome: str) -> str:
     texto = re.sub(r'^\d{14}\s*[-–]?\s*', '', texto)
 
     # 3. Sufixo explícito "- CPF ...", "CPF: ...", "- CNPJ ..." no final
-    texto = re.sub(r'\s*[-–]?\s*(CPF|CNPJ)[:\s]*[\d\.\-\*]+$', '', texto, flags=re.IGNORECASE)
+    texto = re.sub(r'\s*[-–]?\s*(CPF|CNPJ)[:\s]*[\d\.\-\*\/]+$', '', texto, flags=re.IGNORECASE)
 
     # 4. CPF numérico puro de 11 dígitos no final
     texto = re.sub(r'\s+\d{11}$', '', texto)
