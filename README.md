@@ -1,4 +1,4 @@
-﻿# 🏛️ Pipeline de Engenharia de Dados — Portal da Transparência (CGU)
+# 🏛️ Pipeline de Engenharia de Dados — Portal da Transparência (CGU)
 
 > Pipeline end-to-end que extrai dados de gastos com Cartão de Pagamento do Governo Federal (CPGF) da API pública da CGU, transforma via arquitetura Medalhão e entrega um Star Schema no Azure SQL pronto para análise no Power BI.
 
@@ -6,7 +6,8 @@
 
 [![GitHub Actions](https://github.com/alanoregis/Projeto-portal-transparencia-pipeline/actions/workflows/pipeline_transparencia.yml/badge.svg)](https://github.com/alanoregis/Projeto-portal-transparencia-pipeline/actions/workflows/pipeline_transparencia.yml)
 ![Python](https://img.shields.io/badge/Python-3.11-blue?logo=python)
-![dbt](https://img.shields.io/badge/dbt-sqlserver_1.11-orange?logo=dbt)
+![pytest](https://img.shields.io/badge/pytest-33_passed-brightgreen?logo=pytest)
+![dbt](https://img.shields.io/badge/dbt--sqlserver-50_tests_passed-orange?logo=dbt)
 ![Azure](https://img.shields.io/badge/Azure_SQL-Serverless-0078D4?logo=microsoft-azure)
 ![Power BI](https://img.shields.io/badge/Power_BI-Dashboard-F2C811?logo=powerbi)
 
@@ -128,10 +129,11 @@ python run_pipeline.py
 ```
 
 O orquestrador executa em sequência:
-1. **Ingestão dlt** → carrega Bronze no Azure SQL
-2. **dbt run** → transforma Silver + Gold
-3. **dbt test** → valida 48 testes de qualidade
-4. **Resumo Gold** → exibe contagem de registros por tabela
+1. **Validação Unitária (pytest)** → 33 testes de resiliência e sanitização (Fail-Fast)
+2. **Ingestão dlt** → extrai dados da CGU e carrega Bronze no Azure SQL (com Data Contract de volume)
+3. **dbt run** → modela camadas Silver e Gold (Star Schema)
+4. **dbt test** → valida 50 testes de qualidade (integridade referencial, unicidade e volume mínimo)
+5. **Health Check e Resumo Gold** → atesta que a Fato não está vazia e exibe contagens finais
 
 **Ou etapas individuais:**
 
@@ -190,14 +192,22 @@ Projeto-portal-transparencia-pipeline/
 │   │       ├── gold_dim_nivel_alerta.sql  # Dimensão estática de alertas
 │   │       ├── gold_fct_gastos_cartao.sql # Fato Gold com Z-score (STDEV T-SQL)
 │   │       └── schema.yml
+│   ├── tests/                          # Testes singulares (Data Contracts de volume)
+│   │   ├── assert_fct_gastos_cartao_nao_vazia.sql
+│   │   └── assert_dimensoes_principais_nao_vazias.sql
 │   ├── dbt_project.yml                 # Schemas por camada + flags T-SQL
 │   ├── profiles.yml                    # Conexão via env vars
 │   └── packages.yml                    # dbt_utils
 │
+├── tests/                              # Testes unitários de código (pytest)
+│   ├── test_azure_retry.py             # Validação de resiliência e auto-pause 40613
+│   ├── test_cgu_client.py              # Mocks de API, retries, 504 e normalização
+│   └── test_sanitization.py            # Sanitização cirúrgica por Regex (LGPD)
+│
 ├── docs/
 │   └── images/                         # Screenshots e diagramas do projeto
 │
-├── run_pipeline.py                     # Orquestrador: dlt → dbt run → dbt test
+├── run_pipeline.py                     # Orquestrador: pytest → dlt → dbt run → dbt test → Health Check
 ├── requirements.txt                    # Dependências Python
 └── Dockerfile                          # Imagem para execução containerizada
 ```
@@ -283,9 +293,39 @@ GitHub Actions foi a solução: gratuito, integrado, e permite instalar o ODBC D
 
 A API bloqueia a chave por **8 horas** ao exceder o limite. A chave foi bloqueada durante testes com `MAX_PAGES_PER_MONTH=100`.
 
-**Solução:** Segundo a documentação da API do Portal da Transparência, a janela entre 00:00 e 06:00 apresenta menor volume de requisições concorrentes, permitindo um limite mais alto sem risco de bloqueio. A pipeline foi automatizada para rodar de madrugada dentro desse horário, o que possibilitou aumentar o MAX_PAGES_PER_MONTH em produção com segurança.
+**Solução:** Segundo a documentação da API do Portal da Transparência, a janela entre 00:00 e 06:00 apresenta menor volume de requisições concorrentes, permitindo um limite mais alto sem risco de bloqueio. A pipeline foi automatizada para rodar de madrugada dentro desse horário, o que possibilitou aumentar o `MAX_PAGES_PER_MONTH` em produção com segurança.
 
-Para desenvolvimento local, mantém-se o modo INGESTION_MODE=sample, evitando consumir a cota da API durante testes..
+Para desenvolvimento local, mantém-se o modo `INGESTION_MODE=sample`, evitando consumir a cota da API durante testes.
+
+---
+
+### Confiabilidade de Dados: O Incidente da Falha Silenciosa e a Blindagem em 4 Camadas
+
+Durante uma execução com a API da CGU sob instabilidade (retornando erros `504 Gateway Timeout`), o pipeline expôs uma vulnerabilidade clássica de engenharia: **tudo passou verde (100% de sucesso em 1067s), mas o Data Warehouse ficou vazio (0 transações)**.
+
+**Causa Raiz:**
+1. O cliente HTTP esgotava os retries de 504 e retornava silenciosamente uma lista vazia `[]`.
+2. O `dlt` interpretava a lista vazia como uma carga válida de 0 registros.
+3. Os testes nativos do dbt (`not_null`, `unique`, `relationships`) **passam vacuosamente em tabelas vazias** (não há linhas para violar regras).
+4. O orquestrador confiava apenas no código de saída do processo (`exit code 0`).
+
+**Blindagem Implementada (Defesa em Profundidade):**
+
+| Camada | Mecanismo | Comportamento Atual |
+|--------|-----------|---------------------|
+| **1. Cliente HTTP (`cgu_client.py`)** | Fail-Fast com `CGUAPIError` | 5xx ou 429 persistentes após 4 retries **levantam exceção**; lista vazia só é permitida em `HTTP 200` legítimo. |
+| **2. Ingestão (`pipeline_transparencia.py`)** | Data Contract de Volume | O gerador rastreia a contagem de registros e dispara `RuntimeError` se 0 linhas forem extraídas da fonte. |
+| **3. Modelagem (`dbt test`)** | Testes Singulares de Volume | Criados `assert_fct_gastos_cartao_nao_vazia.sql` e `assert_dimensoes_principais_nao_vazias.sql` que falham ativamente se as tabelas estiverem zeradas. |
+| **4. Orquestrador (`run_pipeline.py`)** | Health Check Ativo | Consulta a Fato no Azure SQL e aborta o pipeline com `sys.exit(1)` caso `gold.fct_gastos_cartao` tenha 0 registros, bloqueando o e-mail de sucesso. |
+
+---
+
+### Higienização de Dados (LGPD na Borda) e Preservação da Camada Bronze
+
+A API da CGU expõe dados com vazamento de CPF/CNPJ anexados ao nome do estabelecimento (ex: `"00.110.647 NOME"` ou `"NOME - CPF: ***"`).
+
+- **O Caso "100 Fronteira":** Scripts de limpeza ingênuos que deletam números no início do nome destruíam empresas legítimas como `"100 FRONTEIRA"` ou `"3M DO BRASIL"`. A função `sanitize_nome_favorecido()` foi construída com regex estrito que identifica apenas raízes de CNPJ (8 ou 14 dígitos) e sufixos de documentos, preservando nomes comerciais válidos (validada com 17 testes unitários específicos).
+- **Fidelidade da Camada Bronze:** A ingestão preserva **100% dos atributos da API** (IDs cadastrais, nomes fantasias, siglas ministeriais, códigos SIAFI e naturezas jurídicas), retendo o valor bruto do Data Lake para que futuras demandas analíticas não exijam re-extração da API.
 
 ---
 
@@ -293,21 +333,25 @@ Para desenvolvimento local, mantém-se o modo INGESTION_MODE=sample, evitando co
 
 ### Pipeline executado com sucesso
 
+<!-- RECOMENDAÇÃO DE PRINT: Capture uma imagem do seu terminal rodando "python run_pipeline.py" com a saída da "ETAPA 4: Health Check e Resumo da Camada Gold" mostrando as contagens de registros (ex: 120 fatos, dimensões preenchidas). Substitua o arquivo docs/images/resume_gold.png -->
 ![Resumo Gold após execução do pipeline](docs/images/resume_gold.png)
 
-### Testes dbt — 100% de aprovação
+### Testes dbt — 100% de aprovação (50 Testes de Qualidade)
 
+<!-- RECOMENDAÇÃO DE PRINT: Capture a imagem do terminal após o comando "dbt test" exibindo "Done. PASS=50 WARN=0 ERROR=0 TOTAL=50" para atualizar o arquivo docs/images/dbt_test_results.png -->
 ![dbt test results](docs/images/dbt_test_results.png)
 
-| Tipo de Teste | O que valida |
-|--------------|--------------|
-| `not_null` | Surrogate keys e chaves naturais em todas as tabelas |
-| `unique` | Surrogate keys nas dimensões e fato |
-| `relationships` | Integridade referencial: cada FK da fato existe na dimensão |
-| `accepted_values` | `nivel_alerta` ∈ {NORMAL, MODERADO, CRÍTICO} |
+| Tipo de Teste | Quantidade | O que valida |
+|--------------|:----------:|--------------|
+| `not_null` | 18 | Surrogate keys, chaves de negócio e campos mandatórios |
+| `unique` | 13 | Unicidade de Surrogate keys nas dimensões e Fato |
+| `relationships` | 16 | Integridade referencial entre a Fato e todas as Dimensões |
+| `accepted_values` | 1 | Validação de domínio: `nivel_alerta` ∈ {NORMAL, MODERADO, CRÍTICO} |
+| **Singular (Volume)** | **2** | **Data Contracts: Garante que a Fato e Dimensões principais não estejam vazias** |
 
 ### GitHub Actions — Execução diária automatizada
 
+<!-- RECOMENDAÇÃO DE PRINT: Screenshot do workflow no GitHub Actions com todas as etapas verdes e o envio de e-mail disparado -->
 ![GitHub Actions success](docs/images/github_actions_success.png)
 
 ---
