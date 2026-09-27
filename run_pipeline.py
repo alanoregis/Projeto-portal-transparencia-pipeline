@@ -57,8 +57,11 @@ def run_command(cmd: list, cwd: Path = PROJECT_ROOT, status_hint: str = ""):
         print(f"✅ Concluído com sucesso em {duration:.1f}s")
 
 
-def print_gold_summary():
-    """Exibe resumo das tabelas Gold prontas para consumo no Power BI via Azure SQL."""
+def validate_and_print_gold_summary() -> int:
+    """
+    Exibe resumo das tabelas Gold prontas para consumo no Power BI via Azure SQL
+    e atua como Health Check final (aborta se a Fato estiver vazia).
+    """
     server = os.getenv("AZURE_SQL_SERVER")
     database = os.getenv("AZURE_SQL_DATABASE")
     user = os.getenv("AZURE_SQL_USER")
@@ -75,6 +78,8 @@ def print_gold_summary():
         "TrustServerCertificate=no;"
         "Connection Timeout=30;"
     )
+
+    fato_count = 0
 
     try:
         with pyodbc.connect(conn_str) as conn:
@@ -100,8 +105,8 @@ def print_gold_summary():
             print("\n📊 FATO:")
             for table, desc in fato_tables:
                 cursor.execute(f"SELECT COUNT(*) FROM {table}")
-                count = cursor.fetchone()[0]
-                print(f"   • {table:<32} ➔ {count:>6} registros | {desc}")
+                fato_count = cursor.fetchone()[0]
+                print(f"   • {table:<32} ➔ {fato_count:>6} registros | {desc}")
 
             print("\n📐 DIMENSÕES:")
             for table, desc in dim_tables:
@@ -113,6 +118,18 @@ def print_gold_summary():
 
     except Exception as e:
         print(f"⚠️ Não foi possível consultar o resumo do Azure SQL: {e}")
+        sys.exit(1)
+
+    # Health Check da camada Gold
+    if fato_count == 0:
+        print("\n" + "!" * 70)
+        print("❌ FALHA NO HEALTH CHECK: gold.fct_gastos_cartao possui 0 registros!")
+        print("   O pipeline não pode ser considerado um sucesso com a Fato vazia.")
+        print("   Verifique a ingestão e a API da CGU antes de liberar para o Power BI.")
+        print("!" * 70 + "\n")
+        sys.exit(1)
+
+    return fato_count
 
 
 def main():
@@ -154,8 +171,9 @@ def main():
         status_hint="Executando testes de integridade referencial, unicidade e não-nulos..."
     )
 
-    # Etapa 4 — Resumo Gold
-    print_gold_summary()
+    # Etapa 4 — Health Check e Resumo Gold
+    log_step(4, "Health Check e Resumo da Camada Gold")
+    validate_and_print_gold_summary()
 
     total_duration = time.time() - start_total
     print("\n" + "#" * 70)

@@ -4,8 +4,9 @@ Utiliza mocks para simular respostas da API sem efetuar chamadas de rede reais.
 """
 
 from unittest.mock import patch, MagicMock
+import pytest
 import requests
-from ingestion.cgu_client import CGUClient, normalize_to_mm_aaaa, normalize_record
+from ingestion.cgu_client import CGUClient, CGUAPIError, normalize_to_mm_aaaa, normalize_record
 
 
 class TestNormalizacoesCGU:
@@ -32,6 +33,60 @@ class TestNormalizacoesCGU:
         assert resultado["estabelecimento"]["nome"] == "NAO INFORMADO"
         assert resultado["portador"]["nome"] == "NAO INFORMADO"
         assert resultado["unidadeGestora"]["codigo"] == "00000"
+
+    def test_normalize_record_preserva_campos_completos_da_api(self):
+        """Garante que dados ricos da API (siglas, nomes fantasia, poder) sejam preservados na Bronze."""
+        raw_completo = {
+            "id": 478909949,
+            "mesExtrato": "01/2026",
+            "dataTransacao": "28/11/2025",
+            "valorTransacao": "1.252,55",
+            "tipoCartao": {
+                "id": 1,
+                "codigo": "1",
+                "descricao": "Cartão de Pagamento do Governo Federal - CPGF"
+            },
+            "estabelecimento": {
+                "id": 92756983,
+                "cpfFormatado": "",
+                "cnpjFormatado": "32.428.740/0001-10",
+                "numeroInscricaoSocial": "",
+                "nome": "32.428.740 A F CARDOSO",
+                "razaoSocialReceita": "A F CARDOSO",
+                "nomeFantasiaReceita": "CARDOSO MATERIAL DE CONSTRUCAO",
+                "tipo": "Entidades Empresariais Privadas"
+            },
+            "unidadeGestora": {
+                "codigo": "795140",
+                "nome": "3.BATALHAO DE INFANTARIA DE FUZILEIROS NAVAIS",
+                "descricaoPoder": "EXECUTIVO",
+                "orgaoVinculado": {
+                    "codigoSIAFI": "52131",
+                    "cnpj": "00394502000144",
+                    "sigla": "CMDO MARINHA",
+                    "nome": "Comando da Marinha"
+                },
+                "orgaoMaximo": {
+                    "codigo": "52000",
+                    "sigla": "DEFESA",
+                    "nome": "Ministério da Defesa"
+                }
+            },
+            "portador": {
+                "cpfFormatado": "***.317.637-**",
+                "nis": "",
+                "nome": "CARLOS MOZART RODRIGUES DOS SANTOS ISMERIM"
+            }
+        }
+        res = normalize_record(raw_completo)
+
+        assert res["estabelecimento"]["nome"] == "A F CARDOSO"
+        assert res["estabelecimento"]["nomeFantasiaReceita"] == "CARDOSO MATERIAL DE CONSTRUCAO"
+        assert res["estabelecimento"]["cnpjFormatado"] == "32.428.740/0001-10"
+        assert res["estabelecimento"]["tipo"] == "Entidades Empresariais Privadas"
+        assert res["unidadeGestora"]["descricaoPoder"] == "EXECUTIVO"
+        assert res["orgaoSuperior"]["sigla"] == "DEFESA"
+        assert res["orgaoVinculado"]["sigla"] == "CMDO MARINHA"
 
 
 class TestCGUClientMock:
@@ -71,3 +126,18 @@ class TestCGUClientMock:
         assert dados[0]["id"] == 99
         assert mock_get.call_count == 2
         assert mock_sleep.called
+
+    @patch("time.sleep")
+    @patch("requests.Session.get")
+    def test_504_esgotado_levanta_cgu_api_error(self, mock_get, mock_sleep):
+        """Regressão do Incidente: 504 persistente em todas as tentativas DEVE levantar CGUAPIError, nunca retornar []."""
+        resp_504 = MagicMock()
+        resp_504.status_code = 504
+        mock_get.return_value = resp_504
+
+        client = CGUClient(api_key="chave_teste")
+        with pytest.raises(CGUAPIError, match="Falha irrecuperável na API da CGU.*504"):
+            client._request_with_retry("/cartoes", max_retries=4, backoff_factor=1.0)
+
+        assert mock_get.call_count == 4
+        assert mock_sleep.call_count == 3

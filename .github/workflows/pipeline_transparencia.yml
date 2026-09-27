@@ -76,7 +76,7 @@ jobs:
             - Horário: 01:00 (Fortaleza - CE)
             - Camada Bronze: Ingestão de dados da CGU via dlthub finalizada.
             - Camadas Silver e Gold: Modelagem dimensional dbt-sqlserver concluída.
-            - Testes de Qualidade: 48 testes validados com 100% de sucesso.
+            - Testes de Qualidade: 50 testes validados com 100% de sucesso.
             - Banco Atualizado: Azure SQL Database (sqldb-transparencia).
 
             Os dados já estão disponíveis e prontos para consulta no Power BI!

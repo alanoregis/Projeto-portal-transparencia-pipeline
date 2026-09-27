@@ -57,9 +57,8 @@ def sanitize_nome_favorecido(nome: str) -> str:
 
 def normalize_record(raw: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Padroniza a estrutura do registro retornado pela API da CGU para o schema do pipeline.
-    Garante compatibilidade de nomes e colunas para a camada Bronze.
-    
+    Higieniza dados sensíveis (LGPD) e preserva a totalidade das informações da API da CGU para a Camada Bronze.
+    Garante que todos os atributos de negócio cheguem ao Data Warehouse sem descarte precoce.
     """
     unidade_gestora = raw.get("unidadeGestora") or {}
     orgao_vinculado = unidade_gestora.get("orgaoVinculado") or raw.get("orgaoVinculado") or {}
@@ -68,22 +67,24 @@ def normalize_record(raw: Dict[str, Any]) -> Dict[str, Any]:
     portador = raw.get("portador") or {}
     tipo_cartao = raw.get("tipoCartao") or {}
 
-    cgc = (
-        estabelecimento.get("cnpjFormatado")
-        or estabelecimento.get("cpfFormatado")
-        or estabelecimento.get("cgc")
-        or "NAO INFORMADO"
-    )
-    nome_raw = (
-        estabelecimento.get("nome")
-        or estabelecimento.get("razaoSocialReceita")
-        or estabelecimento.get("nomeFantasiaReceita")
-        or "NAO INFORMADO"
-    )
-    nome_est = sanitize_nome_favorecido(nome_raw)
+    # 1. Higienização por Regex apenas em campos textuais de nome (Proteção LGPD na borda)
+    nome_raw = estabelecimento.get("nome") or ""
+    razao_social_raw = estabelecimento.get("razaoSocialReceita") or ""
+    nome_fantasia_raw = estabelecimento.get("nomeFantasiaReceita") or ""
 
+    nome_est = sanitize_nome_favorecido(nome_raw) if nome_raw else "NAO INFORMADO"
+    razao_social = sanitize_nome_favorecido(razao_social_raw) if razao_social_raw else nome_est
+    nome_fantasia = sanitize_nome_favorecido(nome_fantasia_raw) if nome_fantasia_raw else "NAO INFORMADO"
+
+    # 2. Documentos do Estabelecimento (preservando distinção CNPJ / CPF / CGC)
+    cnpj = estabelecimento.get("cnpjFormatado") or ""
+    cpf_est = estabelecimento.get("cpfFormatado") or ""
+    cgc_fallback = cnpj or cpf_est or estabelecimento.get("cgc") or "NAO INFORMADO"
+
+    # 3. Portador
     cpf_portador = portador.get("cpfFormatado") or portador.get("cpf") or "NAO INFORMADO"
     nome_portador = portador.get("nome") or "NAO INFORMADO"
+    nis_portador = portador.get("nis") or ""
 
     return {
         "id": raw.get("id"),
@@ -91,35 +92,54 @@ def normalize_record(raw: Dict[str, Any]) -> Dict[str, Any]:
         "dataTransacao": raw.get("dataTransacao"),
         "valorTransacao": raw.get("valorTransacao"),
         "tipoCartao": {
-            "codigo": tipo_cartao.get("codigo") or tipo_cartao.get("id") or 1,
+            "id": tipo_cartao.get("id") or 1,
+            "codigo": tipo_cartao.get("codigo") or str(tipo_cartao.get("id") or 1),
             "descricao": tipo_cartao.get("descricao") or "CPGF - Cartão de Pagamento do Governo Federal",
         },
         "estabelecimento": {
+            "id": estabelecimento.get("id"),
             "nome": nome_est,
-            "cgc": cgc,
+            "razaoSocialReceita": razao_social,
+            "nomeFantasiaReceita": nome_fantasia,
+            "cnpjFormatado": cnpj,
+            "cpfFormatado": cpf_est,
+            "cgc": cgc_fallback,
+            "tipo": estabelecimento.get("tipo") or "NAO INFORMADO",
+            "numeroInscricaoSocial": estabelecimento.get("numeroInscricaoSocial") or "",
         },
         "portador": {
             "nome": nome_portador,
             "cpf": cpf_portador,
+            "cpfFormatado": cpf_portador,
+            "nis": nis_portador,
         },
         "unidadeGestora": {
             "codigo": unidade_gestora.get("codigo") or "00000",
             "nome": unidade_gestora.get("nome") or "NAO INFORMADO",
+            "descricaoPoder": unidade_gestora.get("descricaoPoder") or "EXECUTIVO",
         },
         "orgaoVinculado": {
             "codigo": orgao_vinculado.get("codigoSIAFI") or orgao_vinculado.get("codigo") or "00000",
             "nome": orgao_vinculado.get("nome") or "NAO INFORMADO",
+            "sigla": orgao_vinculado.get("sigla") or "",
+            "cnpj": orgao_vinculado.get("cnpj") or "",
         },
         "orgaoSuperior": {
             "codigo": orgao_superior.get("codigo") or "00000",
             "nome": orgao_superior.get("nome") or "NAO INFORMADO",
+            "sigla": orgao_superior.get("sigla") or "",
         },
     }
+
+class CGUAPIError(Exception):
+    """Exceção levantada quando a API da CGU falha de forma irrecuperável."""
+    pass
+
 
 class CGUClient:
     """Cliente HTTP com suporte a autenticação, paginação e retry com backoff exponencial."""
 
-    def __init__(self, api_key: Optional[str] = None, timeout: int = 30):
+    def __init__(self, api_key: Optional[str] = None, timeout: int = 60):
         self.api_key = api_key or ""
         self.timeout = timeout
         self.session = requests.Session()
@@ -139,49 +159,60 @@ class CGUClient:
         """Executa uma requisição GET com retry em caso de rate limit ou falhas transitórias."""
         url = f"{BASE_URL}{endpoint}" if not endpoint.startswith("http") else endpoint
         params = params or {}
+        last_status = None
 
         for attempt in range(1, max_retries + 1):
             try:
                 response = self.session.get(url, params=params, timeout=self.timeout)
+                last_status = response.status_code
 
                 if response.status_code == 200:
                     data = response.json()
                     return data if isinstance(data, list) else [data]
 
                 if response.status_code == 429:
+                    if attempt == max_retries:
+                        break
                     sleep_time = backoff_factor ** attempt
                     logger.warning(
-                        f"Rate limit atingido (429). Aguardando {sleep_time:.1f}s antes da tentativa {attempt}/{max_retries}..."
+                        f"Rate limit atingido (429). Aguardando {sleep_time:.1f}s antes da tentativa {attempt + 1}/{max_retries}..."
                     )
                     time.sleep(sleep_time)
                     continue
 
                 if response.status_code in (500, 502, 503, 504):
+                    if attempt == max_retries:
+                        break
                     sleep_time = backoff_factor ** attempt
                     logger.warning(
-                        f"Erro de servidor ({response.status_code}). Aguardando {sleep_time:.1f}s antes da tentativa {attempt}/{max_retries}..."
+                        f"Erro de servidor ({response.status_code}). Aguardando {sleep_time:.1f}s antes da tentativa {attempt + 1}/{max_retries}..."
                     )
                     time.sleep(sleep_time)
                     continue
 
                 if response.status_code in (401, 403):
-                    logger.error(
+                    msg = (
                         f"Erro de autenticação ({response.status_code}). "
-                        "verifique se a chave 'chave-api-dados' é válida em https://portaldatransparencia.gov.br/api-de-dados/cadastrar-chave"
+                        "Verifique se a chave 'chave-api-dados' é válida em https://portaldatransparencia.gov.br/api-de-dados/cadastrar-chave"
                     )
-                    response.raise_for_status()
+                    logger.error(msg)
+                    raise CGUAPIError(msg)
 
                 response.raise_for_status()
 
             except requests.exceptions.RequestException as exc:
                 if attempt == max_retries:
-                    logger.error(f"Falha definida após {max_retries} tentativas na URL {url}: {exc}")
-                    raise
+                    logger.error(f"Falha de conexão/rede após {max_retries} tentativas na URL {url}: {exc}")
+                    raise CGUAPIError(f"Falha de rede após {max_retries} tentativas na URL {url}: {exc}") from exc
                 sleep_time = backoff_factor ** attempt
                 logger.warning(f"Erro na requisição ({exc}). Tentando novamente em {sleep_time:.1f}s...")
                 time.sleep(sleep_time)
 
-        return []
+        # Se saiu do loop sem retorno 200, significa que todas as tentativas falharam
+        raise CGUAPIError(
+            f"Falha irrecuperável na API da CGU ({url}) após {max_retries} tentativas. "
+            f"Último status HTTP: {last_status}. Abortando para evitar ingestão com dados vazios."
+        )
 
     def get_cartoes_pagamento(
             self,
