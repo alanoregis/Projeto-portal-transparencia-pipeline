@@ -81,12 +81,26 @@ def cartoes_pagamento_resource() -> Generator[Dict[str, Any], None, None]:
             )
         )
 
-        client = CGUClient(api_key=api_key)
+        timeout = int(os.getenv("CGU_TIMEOUT", "60"))
+        client = CGUClient(api_key=api_key, timeout=timeout)
+        total_extraido = 0
 
-        yield from client.get_cartoes_pagamento(
+        for record in client.get_cartoes_pagamento(
             mes_extrato_inicio=inicio,
             mes_extrato_fim=fim,
             max_pages=max_pages,
+        ):
+            total_extraido += 1
+            yield record
+
+        if total_extraido == 0:
+            raise RuntimeError(
+                f"Contrato de Volume Violado: 0 registros extraídos da API da CGU no período {inicio} a {fim}. "
+                "Abortando ingestão para evitar contaminação da camada Bronze com dados vazios."
+            )
+
+        logger.info(
+            f"Extração da API CGU concluída com sucesso: {total_extraido} registros coletados."
         )
 
     else:
