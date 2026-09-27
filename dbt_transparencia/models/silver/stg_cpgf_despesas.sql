@@ -1,7 +1,7 @@
 /*
 Modelo Staging: Limpeza, padronização de tipos e tratamento da camada Bronze.
 Compatível com Azure SQL Database (T-SQL).
-Filtro de período: 2024-01 a 2026-12.
+Filtro de período: a partir de 2024-01.
 */
 
 {{ config(materialized='view') }}
@@ -71,7 +71,7 @@ parsed AS (
 cleaned AS (
     SELECT *
     FROM parsed
-    WHERE ano_mes_extrato BETWEEN '2024-01' AND '2026-12'
+    WHERE ano_mes_extrato >= '2024-01'
 ),
 
 ranked AS (
