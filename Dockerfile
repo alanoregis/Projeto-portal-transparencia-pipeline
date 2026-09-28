@@ -30,8 +30,7 @@ COPY requirements.txt .
 
 # Instala as bibliotecas Python
 RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -r requirements.txt \
-    && pip install --no-cache-dir pyodbc sqlalchemy "dlt[sql_database]" dbt-sqlserver
+    && pip install --no-cache-dir -r requirements.txt
 
 # Copia todo o código do projeto para o container
 COPY . .

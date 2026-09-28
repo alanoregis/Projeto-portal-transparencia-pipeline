@@ -1,8 +1,7 @@
 """
-Pipeline de Ingestão com dlthub (dlt) -> DuckDB (Camada Bronze).
+Pipeline de Ingestão com dlthub (dlt) -> Azure SQL Database (Camada Bronze).
 Este script orquestra a extração da API do Portal da Transparência (ou modo amostra)
-e o carregamento resiliente no DuckDB sob o schema 'bronze'.
-
+e o carregamento resiliente no Azure SQL Database sob o schema 'bronze'.
 """
 
 import os

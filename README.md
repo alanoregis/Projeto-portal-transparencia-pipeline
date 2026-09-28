@@ -6,8 +6,9 @@
 
 [![GitHub Actions](https://github.com/alanoregis/Projeto-portal-transparencia-pipeline/actions/workflows/pipeline_transparencia.yml/badge.svg)](https://github.com/alanoregis/Projeto-portal-transparencia-pipeline/actions/workflows/pipeline_transparencia.yml)
 ![Python](https://img.shields.io/badge/Python-3.11-blue?logo=python)
-![pytest](https://img.shields.io/badge/pytest-33_passed-brightgreen?logo=pytest)
+![pytest](https://img.shields.io/badge/pytest-41_passed-brightgreen?logo=pytest)
 ![dbt](https://img.shields.io/badge/dbt--sqlserver-50_tests_passed-orange?logo=dbt)
+![scikit-learn](https://img.shields.io/badge/scikit--learn-Isolation_Forest-F7931E?logo=scikit-learn&logoColor=white)
 ![Azure](https://img.shields.io/badge/Azure_SQL-Serverless-0078D4?logo=microsoft-azure)
 ![Power BI](https://img.shields.io/badge/Power_BI-Dashboard-F2C811?logo=powerbi)
 
@@ -21,7 +22,7 @@
 2. [Stack Tecnológica](#2-stack-tecnológica)
 3. [Como Rodar o Projeto](#3-como-rodar-o-projeto)
 4. [Estrutura de Pastas](#4-estrutura-de-pastas)
-5. [Modelagem de Dados](#5-modelagem-de-dados)
+5. [Modelagem de Dados & Machine Learning](#5-modelagem-de-dados--machine-learning)
 6. [Decisões Técnicas e Desafios](#6-decisões-técnicas-e-desafios)
 7. [Resultados e Qualidade de Dados](#7-resultados-e-qualidade-de-dados)
 
@@ -37,12 +38,13 @@ Pipeline end-to-end com execução diária automatizada via GitHub Actions:
 
 | Etapa | Ferramenta | Schema | O que acontece |
 |-------|-----------|--------|----------------|
-| Extração | `dlt` + `CGUClient` | — | Paginação da API REST com rate limit control |
-| Bronze | `dlt` → Azure SQL | `bronze` | Dados brutos carregados com `replace` |
-| Silver | `dbt` | `silver` | Limpeza, tipagem T-SQL, deduplicação via CTE |
-| Gold | `dbt` | `gold` | Star Schema pronto + Z-score de anomalia |
-| CI/CD | GitHub Actions | — | Agendamento diário + notificação por email |
-| Consumo | Power BI Desktop | `gold.*` | 6 tabelas conectadas via ODBC |
+| Extração | `dlt` + `CGUClient` | — | Paginação da API REST com rate limit control e Egress Gateway (Brasil) |
+| Bronze | `dlt` → Azure SQL | `bronze` | Dados brutos carregados com `replace` (preservando 100% da fonte) |
+| Silver | `dbt` | `silver` | Limpeza, tipagem T-SQL, deduplicação via CTE e higienização LGPD |
+| Gold (Star Schema) | `dbt` | `gold` | Star Schema dimensional + Z-Score estatístico univariado |
+| Gold (ML Anomalias) | `scikit-learn` | `gold` | Isolation Forest multivariado gravando `gold.score_anomalia_cartao` |
+| CI/CD | GitHub Actions | — | Agendamento diário + Fail-Fast pytest + notificação por email |
+| Consumo | Power BI Desktop | `gold.*` | 7 tabelas conectadas via ODBC (Fato + 5 Dimensões + 1 Satélite de ML) |
 
 ---
 
@@ -52,11 +54,13 @@ Pipeline end-to-end com execução diária automatizada via GitHub Actions:
 |--------|-----------|--------|--------|
 | **Ingestão** | [dlt (dlthub)](https://dlthub.com/) | `>=1.3.0` | Extração paginada da API CGU |
 | **Transformação** | [dbt-sqlserver](https://docs.getdbt.com/docs/core/connect-data-platform/mssql-setup) | `1.11.1` | Modelagem Medalhão Silver/Gold |
+| **Machine Learning** | [scikit-learn](https://scikit-learn.org/) | `>=1.3.0` | Detecção de Anomalias multivariada (Isolation Forest) |
+| **DataFrames** | [pandas](https://pandas.pydata.org/) | `>=2.0.0` | Feature engineering e persistência batch no Azure SQL |
 | **Banco de dados** | Azure SQL Database Serverless | Gen5 / 2 vCores | Destino cloud com auto-pause |
 | **Orquestração** | GitHub Actions | — | CI/CD diário com cron |
-| **Visualização** | Power BI Desktop | — | Dashboards com Star Schema |
-| **Linguagem** | Python | 3.11 | Scripts de orquestração e ingestão |
-| **Conector** | pyodbc + SQLAlchemy | `>=5.0 / >=2.0` | Conexão Python → Azure SQL |
+| **Visualização** | Power BI Desktop | — | Dashboards com Star Schema e scores de anomalia |
+| **Linguagem** | Python | 3.11 | Scripts de orquestração, ML e ingestão |
+| **Conector** | pyodbc + SQLAlchemy | `>=5.0 / >=2.0` | Conexão Python → Azure SQL com fast_executemany |
 | **Notificação** | Gmail SMTP | — | Email de sucesso/falha automático |
 
 ---
@@ -128,12 +132,13 @@ MAX_PAGES_PER_MONTH=50
 python run_pipeline.py
 ```
 
-O orquestrador executa em sequência:
-1. **Validação Unitária (pytest)** → 33 testes de resiliência e sanitização (Fail-Fast)
-2. **Ingestão dlt** → extrai dados da CGU e carrega Bronze no Azure SQL (com Data Contract de volume)
-3. **dbt run** → modela camadas Silver e Gold (Star Schema)
-4. **dbt test** → valida 50 testes de qualidade (integridade referencial, unicidade e volume mínimo)
-5. **Health Check e Resumo Gold** → atesta que a Fato não está vazia e exibe contagens finais
+O orquestrador executa em sequência automatizada:
+1. **Etapa 0: Validação Unitária (pytest)** → 41 testes de sanitização LGPD, resiliência CGU, retry Azure e modelo de ML (Fail-Fast)
+2. **Etapa 1: Ingestão dlt** → extrai dados da CGU e carrega Bronze no Azure SQL (com Data Contract de volume)
+3. **Etapa 2: Transformação dbt (Silver + Gold)** → modela camadas Silver e Gold (Star Schema dimensional)
+4. **Etapa 3: Machine Learning (Isolation Forest)** → gera scores multivariados [0.0, 1.0] e persiste em `gold.score_anomalia_cartao`
+5. **Etapa 4: Qualidade de Dados (dbt test)** → valida 50 testes de qualidade (integridade referencial, unicidade e volume mínimo)
+6. **Etapa 5: Health Check e Resumo Gold** → atesta que a Fato e Satélites contêm dados válidos e exibe contagens finais
 
 **Ou etapas individuais:**
 
@@ -141,10 +146,13 @@ O orquestrador executa em sequência:
 # Apenas ingestão (Bronze)
 python ingestion/pipeline_transparencia.py
 
-# Apenas transformação
+# Apenas transformação dbt
 dbt run --project-dir dbt_transparencia --profiles-dir dbt_transparencia
 
-# Apenas testes de qualidade
+# Apenas inferência de Machine Learning (Gold)
+python ml/anomaly_detection.py
+
+# Apenas testes de qualidade dbt
 dbt test --project-dir dbt_transparencia --profiles-dir dbt_transparencia
 ```
 
@@ -153,8 +161,9 @@ dbt test --project-dir dbt_transparencia --profiles-dir dbt_transparencia
 1. **Obter Dados → Azure SQL Database**
 2. Servidor: `seu-servidor.database.windows.net`
 3. Autenticação: **Banco de dados** (usuário/senha)
-4. Importar as tabelas do schema `gold`:
-   - `gold.fct_gastos_cartao`
+4. Importar as 7 tabelas do schema `gold`:
+   - `gold.fct_gastos_cartao` (Fato principal)
+   - `gold.score_anomalia_cartao` (Satélite de ML conectado 1:1 via `id_transacao`)
    - `gold.dim_data`, `gold.dim_orgaos`, `gold.dim_favorecidos`
    - `gold.dim_portadores`, `gold.dim_nivel_alerta`
 
@@ -167,12 +176,17 @@ Projeto-portal-transparencia-pipeline/
 │
 ├── .github/
 │   └── workflows/
-│       └── pipeline_transparencia.yml  # CI/CD — cron diário + email de alerta
+│       ├── pipeline_transparencia.yml  # CI/CD — cron diário + Egress Gateway + email de alerta
+│       └── ci_quality_gate.yml         # CI Quality Gate (pytest em PRs e pushes)
 │
 ├── ingestion/
-│   ├── pipeline_transparencia.py       # Recurso dlt: extrai API CGU → Bronze
-│   ├── cgu_client.py                   # Client HTTP (paginação + rate limit)
-│   └── sample_data.py                  # Dados de amostra para dev/test local
+│   ├── pipeline_transparencia.py       # Recurso dlt: extrai API CGU → Bronze no Azure SQL
+│   ├── cgu_client.py                   # Client HTTP resiliente (anti-WAF, proxies, retries 429/504)
+│   └── sample_data.py                  # Dados de amostra para testes locais sem API key
+│
+├── ml/                                 # Camada de Inteligência Artificial & Machine Learning
+│   ├── __init__.py
+│   └── anomaly_detection.py            # Isolation Forest multivariado + persistência Azure SQL
 │
 ├── dbt_transparencia/
 │   ├── models/
@@ -199,41 +213,85 @@ Projeto-portal-transparencia-pipeline/
 │   ├── profiles.yml                    # Conexão via env vars
 │   └── packages.yml                    # dbt_utils
 │
-├── tests/                              # Testes unitários de código (pytest)
-│   ├── test_azure_retry.py             # Validação de resiliência e auto-pause 40613
-│   ├── test_cgu_client.py              # Mocks de API, retries, 504 e normalização
-│   └── test_sanitization.py            # Sanitização cirúrgica por Regex (LGPD)
+├── tests/                              # Testes unitários de código (41 testes pytest)
+│   ├── test_anomaly_detection.py       # Validação de features, treino, scores e versionamento
+│   ├── test_azure_retry.py             # Resiliência a cold-start e erro 40613 no Azure Serverless
+│   ├── test_cgu_client.py              # Mocks de API, headers anti-WAF, proxies e erros 504/429
+│   └── test_sanitization.py            # Sanitização cirúrgica por Regex e conformidade LGPD
 │
 ├── docs/
 │   └── images/                         # Screenshots e diagramas do projeto
 │
-├── run_pipeline.py                     # Orquestrador: pytest → dlt → dbt run → dbt test → Health Check
-├── requirements.txt                    # Dependências Python
-└── Dockerfile                          # Imagem para execução containerizada
+├── run_pipeline.py                     # Orquestrador: pytest → dlt → dbt → ML → dbt test → Health Check
+├── requirements.txt                    # Dependências Python (scikit-learn, pandas, dlt, dbt, etc.)
+└── Dockerfile                          # Imagem oficial para execução containerizada
 ```
 
 ---
 
-## 5. Modelagem de Dados
+## 5. Modelagem de Dados & Machine Learning
 
 ### Star Schema — Camada Gold (Power BI Model View)
 
 ![Star Schema no Power BI](docs/images/powerbi_model_view.png)
 
-A camada Gold entrega 6 tabelas prontas para consumo no Power BI conectadas em Star Schema: uma tabela fato central (`fct_gastos_cartao`) ligada a 5 dimensões (`dim_data`, `dim_orgaos`, `dim_favorecidos`, `dim_portadores`, `dim_nivel_alerta`).
+A camada Gold entrega **7 tabelas** prontas para consumo no Power BI conectadas em Star Schema + Tabela Satélite de Inteligência Artificial:
+- **Tabela Fato Central:** `gold.fct_gastos_cartao` (grão por transação)
+- **Tabela Satélite de ML:** `gold.score_anomalia_cartao` (relacionamento 1:1 via `id_transacao`)
+- **Dimensões:** `gold.dim_data`, `gold.dim_orgaos`, `gold.dim_favorecidos`, `gold.dim_portadores`, `gold.dim_nivel_alerta`
 
-### Classificação de Anomalia (Z-score)
+---
+
+### Duplo Nível de Detecção: Heurística Estatística (dbt) vs. Machine Learning Multivariado (scikit-learn)
+
+O projeto implementa uma abordagem em duas camadas para identificação de irregularidades em gastos públicos com o CPGF:
+
+```
+                         ┌─────────────────────────────────────────────────────────┐
+                         │   Transação CPGF (Cartão Corporativo do Governo)        │
+                         └────────────────────────────┬────────────────────────────┘
+                                                      │
+                                    ┌─────────────────┴─────────────────┐
+                                    ▼                                   ▼
+                    [Nível 1: Heurística Estatística]   [Nível 2: Machine Learning Não Supervisionado]
+                             dbt-sqlserver                               scikit-learn
+                                    │                                   │
+                                    ▼                                   ▼
+                            Z-Score Univariado               Isolation Forest Multivariado
+                    (Desvio em relação à média do órgão)       (7 features contextuais simultâneas)
+                                    │                                   │
+                                    ▼                                   ▼
+                       `gold.fct_gastos_cartao`            `gold.score_anomalia_cartao`
+```
+
+#### Nível 1: Heurística Univariada no dbt (Z-Score)
+Calculado diretamente em T-SQL dentro do dbt (`gold_fct_gastos_cartao.sql`), avaliando se o valor monetário da transação é atípico em relação ao histórico específico do órgão superior:
 
 ```sql
--- Cálculo em gold_fct_gastos_cartao.sql
-zscore_valor = (valor_transacao - AVG(valor_transacao) OVER ()) 
-             / NULLIF(STDEV(valor_transacao) OVER (), 0)
-
--- Regras em dim_nivel_alerta:
--- |Z| < 2.0  →  NORMAL
--- |Z| < 3.0  →  MODERADO  
--- |Z| >= 3.0 →  CRÍTICO
+z_score = (vl_transacao - media_gasto_orgao) / NULLIF(stddev_gasto_orgao, 0)
 ```
+
+- **Limitação do Z-Score:** Analisa apenas uma variável (valor). Uma compra de R$ 800 pode ter Z-Score normal, mas ter sido realizada no domingo, em um fornecedor esporádico e por um portador com baixo histórico de uso.
+
+#### Nível 2: Detecção de Anomalias Multivariada (Isolation Forest)
+O módulo [`ml/anomaly_detection.py`](ml/anomaly_detection.py) processa as transações através do algoritmo **Isolation Forest** (não supervisionado, com 150 estimadores), ideal para dados sem rótulos prévios de fraude.
+
+**Engenharia de Atributos (7 Features de Entrada):**
+1. `vl_transacao`: Valor nominal da despesa.
+2. `z_score`: Desvio estatístico gerado pelo dbt (agrega contexto histórico do ministério).
+3. `razao_media_orgao`: Múltiplo do gasto sobre a média do órgão (`vl_transacao / media_orgao`).
+4. `dia_semana`: Dia da semana (1 a 7).
+5. `fl_fim_semana`: Flag binária (1 para sábado/domingo) — gastos em fins de semana são historicamente o principal foco de auditoria do TCU/CGU para o CPGF.
+6. `freq_favorecido`: Frequência acumulada do estabelecimento (compras em fornecedores raros têm maior propensão a atipicidade).
+7. `freq_portador`: Histórico de uso do cartão pelo portador.
+
+**Normalização e Calibração Dinâmica:**
+- **Inversão e Normalização $[0.0, 1.0]$:** O `decision_function` nativo do scikit-learn é invertido e normalizado com `MinMaxScaler`, garantindo que **scores maiores indiquem maior anomalia** (0.0 = rotineiro, 1.0 = anomalia máxima).
+- **Limiares Estatísticos:** 
+  - `is_anomaly_p95`: Sinaliza transações no Top 5% mais atípico (Alerta Moderado).
+  - `is_anomaly_p99`: Sinaliza transações no Top 1% mais crítico (Alerta Crítico).
+- **Explicabilidade (`motivo_anomalia`):** Cada anomalia recebe uma justificativa analítica legível (ex: `"Transação em fim de semana | Alto desvio da média do órgão"`).
+- **Rastreabilidade e MLOps:** Persistido com a coluna `model_version` (`isolation_forest_v1_cpgf`) e `dt_processamento`, permitindo auditoria e comparação de versões futuras diretamente no Power BI.
 
 ---
 
@@ -336,7 +394,21 @@ A API da CGU expõe dados com vazamento de CPF/CNPJ anexados ao nome do estabele
 <!-- RECOMENDAÇÃO DE PRINT: Capture uma imagem do seu terminal rodando "python run_pipeline.py" com a saída da "ETAPA 4: Health Check e Resumo da Camada Gold" mostrando as contagens de registros (ex: 120 fatos, dimensões preenchidas). Substitua o arquivo docs/images/resume_gold.png -->
 ![Resumo Gold após execução do pipeline](docs/images/resume_gold.png)
 
-### Testes dbt — 100% de aprovação (50 Testes de Qualidade)
+### Testes Unitários de Código (pytest) — 100% de aprovação (41 Testes)
+
+Validação Fail-Fast executada antes de qualquer chamada externa ou transformação de dados:
+
+| Módulo de Teste | Qtd | Escopo e Proteção de Negócio |
+| :--- | :---: | :--- |
+| `tests/test_sanitization.py` | 20 | **LGPD & Sanitização:** Remoção de vazamento de CPF/CNPJ em nomes de favorecidos preservando empresas com dígitos legítimos (`100 FRONTEIRA`, `3M`, `1000 GRAUS`). |
+| `tests/test_cgu_client.py` | 11 | **Resiliência HTTP:** Headers anti-WAF (mimetizando Chrome/Windows), proxies dinâmicos (ScraperAPI / Custom), retries com backoff exponencial para 429 e 504. |
+| `tests/test_azure_retry.py` | 5 | **Nuvem Azure SQL:** Inspeção em cadeia (`__cause__` e `__context__`) para erro 40613 de auto-resume do Azure Serverless sem dependência de exceções diretas. |
+| `tests/test_anomaly_detection.py` | 5 | **Machine Learning:** Validação de matriz sem NaNs, scores estritamente em $[0.0, 1.0]$, classificação P99 em anomalias extremas e rastreabilidade MLOps (`model_version`). |
+| **Total pytest** | **41** | **Fail-Fast garantido em ~2.4 segundos no CI/CD** |
+
+---
+
+### Testes dbt — 100% de aprovação (50 Testes de Qualidade de Dados)
 
 <!-- RECOMENDAÇÃO DE PRINT: Capture a imagem do terminal após o comando "dbt test" exibindo "Done. PASS=50 WARN=0 ERROR=0 TOTAL=50" para atualizar o arquivo docs/images/dbt_test_results.png -->
 ![dbt test results](docs/images/dbt_test_results.png)
