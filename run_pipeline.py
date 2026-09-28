@@ -11,6 +11,7 @@ import time
 from pathlib import Path
 import pyodbc
 from dotenv import load_dotenv
+from ml.anomaly_detection import run_pipeline_anomaly_detection
 
 if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8')
@@ -102,6 +103,11 @@ def validate_and_print_gold_summary() -> int:
                 ("gold.dim_nivel_alerta",  "Dimensão de alertas: NORMAL / MODERADO / CRITICO"),
             ]
 
+            # Tabela satélite de ML
+            ml_tables = [
+                ("gold.score_anomalia_cartao", "Scores Isolation Forest + flags P95/P99 + motivo"),
+            ]
+
             print("\n📊 FATO:")
             for table, desc in fato_tables:
                 cursor.execute(f"SELECT COUNT(*) FROM {table}")
@@ -113,6 +119,15 @@ def validate_and_print_gold_summary() -> int:
                 cursor.execute(f"SELECT COUNT(*) FROM {table}")
                 count = cursor.fetchone()[0]
                 print(f"   • {table:<32} ➔ {count:>6} registros | {desc}")
+
+            print("\n🤖 ML — ANOMALY DETECTION:")
+            for table, desc in ml_tables:
+                try:
+                    cursor.execute(f"SELECT COUNT(*) FROM {table}")
+                    count = cursor.fetchone()[0]
+                    print(f"   • {table:<32} ➔ {count:>6} registros | {desc}")
+                except Exception:
+                    print(f"   • {table:<32} ➔ (ainda não criada — execute a Etapa 3)")
 
             print("-" * 70)
 
@@ -162,8 +177,19 @@ def main():
         status_hint="Compilando e executando modelos Silver e Gold..."
     )
 
-    # Etapa 3 — Testes de qualidade
-    log_step(3, "Validação e Testes de Qualidade de Dados (dbt test)")
+    # Etapa 3 — Detecção de Anomalias com Machine Learning
+    log_step(3, "Detecção de Anomalias com Machine Learning (Isolation Forest)")
+    try:
+        resultado_ml = run_pipeline_anomaly_detection()
+        print(f"   ✅ ML concluído: {resultado_ml['total_processado']} transações pontuadas")
+        print(f"   🔶 Anomalias P95 (Top 5%):  {resultado_ml['anomalias_p95']} transações")
+        print(f"   🔴 Anomalias P99 (Top 1%):  {resultado_ml['anomalias_p99']} transações críticas")
+    except Exception as e:
+        print(f"   ⚠️  Etapa de ML falhou com erro: {e}")
+        print("   ⚠️  O pipeline continuará — os dados Gold seguem disponíveis para o Power BI.")
+
+    # Etapa 4 — Testes de qualidade
+    log_step(4, "Validação e Testes de Qualidade de Dados (dbt test)")
     run_command(
         [str(DBT_EXE), "test",
          "--project-dir", "dbt_transparencia",
@@ -171,8 +197,8 @@ def main():
         status_hint="Executando testes de integridade referencial, unicidade e não-nulos..."
     )
 
-    # Etapa 4 — Health Check e Resumo Gold
-    log_step(4, "Health Check e Resumo da Camada Gold")
+    # Etapa 5 — Health Check e Resumo Gold
+    log_step(5, "Health Check e Resumo da Camada Gold")
     validate_and_print_gold_summary()
 
     total_duration = time.time() - start_total

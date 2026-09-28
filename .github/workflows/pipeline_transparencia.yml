@@ -1,26 +1,37 @@
 name: Pipeline Portal da Transparência (Diário)
-
+ 
 on:
-  # Agendamento diário: da manhã no horário de Fortaleza (UTC-3)
+  # Agendamento diário (cron em UTC): 02:37 UTC = 23:37 em Fortaleza (UTC-3)
   schedule:
     - cron: '37 2 * * *'
   # Permite disparar manualmente pelo botão "Run workflow" no GitHub
   workflow_dispatch:
-
+ 
 jobs:
   run-pipeline:
+    # Executa 100% na nuvem (GitHub Actions). As chamadas CGU usam Egress Gateway brasileiro quando SCRAPERAPI_KEY existir.
     runs-on: ubuntu-latest
 
+    # Força UTF-8 no Python (evita acentos quebrados no log)
+    env:
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: "utf-8"
+ 
     steps:
       - name: Checkout do Repositório
         uses: actions/checkout@v4
-
+ 
+      # Só roda nos runners hospedados pelo GitHub. No self-hosted usa o Python já instalado no PC.
       - name: Configurar Python 3.11
+        if: runner.environment == 'github-hosted'
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: 'pip'
-
+ 
+      - name: Mostrar versão do Python
+        run: python --version
+ 
       - name: Instalar Microsoft ODBC Driver 17 for SQL Server (Ubuntu)
         if: runner.os == 'Linux'
         run: |
@@ -28,17 +39,35 @@ jobs:
           curl https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/prod.list | sudo tee /etc/apt/sources.list.d/mssql-release.list
           sudo apt-get update
           sudo ACCEPT_EULA=Y apt-get install -y msodbcsql17 unixodbc-dev
-
+ 
       - name: Instalar Dependências do Python
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pyodbc sqlalchemy "dlt[sql_database]" dbt-sqlserver
-
+ 
       - name: Instalar Dependências do dbt (dbt_utils)
         working-directory: dbt_transparencia
         run: dbt deps --profiles-dir .
-
+ 
+      # Diagnóstico: compara o comportamento da API com dois User-Agents (PowerShell / Windows).
+      # continue-on-error para não impedir a execução do pipeline.
+      - name: Diagnóstico API CGU
+        if: runner.os == 'Windows'
+        continue-on-error: true
+        env:
+          CGU_API_KEY: ${{ secrets.CGU_API_KEY }}
+        run: |
+          $url = "https://api.portaldatransparencia.gov.br/api-de-dados/cartoes?mesExtratoInicio=01/2026&mesExtratoFim=01/2026&pagina=1"
+          $uas = @(
+            "python-requests/2.32",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+          )
+          foreach ($ua in $uas) {
+            Write-Host "=== UA: $ua"
+            curl.exe -s -m 30 -o NUL -D - -w "status=%{http_code} tempo=%{time_total}s`n" -H "User-Agent: $ua" -H "chave-api-dados: $env:CGU_API_KEY" $url
+          }
+ 
       - name: Executar Pipeline de Engenharia de Dados (Bronze -> Silver -> Gold)
         env:
           AZURE_SQL_SERVER: ${{ secrets.AZURE_SQL_SERVER }}
@@ -47,13 +76,15 @@ jobs:
           AZURE_SQL_PASSWORD: ${{ secrets.AZURE_SQL_PASSWORD }}
           AZURE_SQL_DRIVER: ${{ secrets.AZURE_SQL_DRIVER }}
           CGU_API_KEY: ${{ secrets.CGU_API_KEY }}
+          SCRAPERAPI_KEY: ${{ secrets.SCRAPERAPI_KEY }}
+          CGU_PROXY: ${{ secrets.CGU_PROXY }}
           INGESTION_MODE: "api"
-          EXTRACT_MES_EXTRATO_INICIO: "01/2026"
+          EXTRACT_MES_EXTRATO_INICIO: "01/2024"
           EXTRACT_MES_EXTRATO_FIM: "08/2026"
-          MAX_PAGES_PER_MONTH: "1"
+          MAX_PAGES_PER_MONTH: "100"
         run: |
           python run_pipeline.py
-
+ 
       # Etapa disparada quando o pipeline executa com SUCESSO
       - name: Enviar E-mail de Sucesso (Gmail)
         if: success()
@@ -69,21 +100,20 @@ jobs:
           from: "Pipeline Transparência <${{ secrets.MAIL_USERNAME }}>"
           body: |
             Olá Alano,
-
-            O pipeline de engenharia de dados do Portal da Transparência (CGU) foi executado com sucesso na nuvem!
-
+ 
+            O pipeline de engenharia de dados do Portal da Transparência (CGU) foi executado com sucesso!
+ 
             📊 Resumo da Execução:
-            - Horário: 01:00 (Fortaleza - CE)
             - Camada Bronze: Ingestão de dados da CGU via dlthub finalizada.
             - Camadas Silver e Gold: Modelagem dimensional dbt-sqlserver concluída.
-            - Testes de Qualidade: 50 testes validados com 100% de sucesso.
+            - Testes de Qualidade: validados com sucesso.
             - Banco Atualizado: Azure SQL Database (sqldb-transparencia).
-
+ 
             Os dados já estão disponíveis e prontos para consulta no Power BI!
-
+ 
             Repositório: https://github.com/${{ github.repository }}
             Detalhes do Run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
-
+ 
       # Etapa disparada caso ocorra alguma FALHA
       - name: Enviar E-mail de Alerta de Falha (Gmail)
         if: failure()
@@ -99,8 +129,8 @@ jobs:
           from: "Pipeline Transparência <${{ secrets.MAIL_USERNAME }}>"
           body: |
             Atenção Alano,
-
+ 
             Ocorreu uma falha durante a execução do pipeline de dados do Portal da Transparência.
-
+ 
             Por favor, verifique os logs da execução no GitHub Actions para diagnosticar o erro:
             https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
