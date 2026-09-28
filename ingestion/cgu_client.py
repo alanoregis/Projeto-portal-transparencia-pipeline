@@ -7,8 +7,10 @@ Documentação: https://api.portaldatransparencia.gov.br/swagger-ui/index.html
 import time
 import logging
 import re
+import os
 from typing import Dict, Any, Generator, Optional
 import requests
+import urllib3
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -137,12 +139,32 @@ class CGUAPIError(Exception):
 
 
 class CGUClient:
-    """Cliente HTTP com suporte a autenticação, paginação e retry com backoff exponencial."""
+    """Cliente HTTP com suporte a autenticação, paginação, proxy e retry com backoff exponencial."""
 
-    def __init__(self, api_key: Optional[str] = None, timeout: int = 60):
+    def __init__(self, api_key: Optional[str] = None, timeout: int = 60, proxy: Optional[str] = None):
         self.api_key = api_key or ""
         self.timeout = timeout
+        self.proxy = proxy or os.getenv("CGU_PROXY")
         self.session = requests.Session()
+
+        # Gateway Egress (ex: ScraperAPI) para contornar bloqueios geográficos (WAF) da CGU
+        scraper_key = os.getenv("SCRAPERAPI_KEY")
+        if scraper_key:
+            proxy_url = f"http://scraperapi.country_code=br.keep_headers=true:{scraper_key}@proxy-server.scraperapi.com:8001"
+            self.session.proxies = {
+                "http": proxy_url,
+                "https": proxy_url,
+            }
+            self.session.verify = False
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+            logger.info("Gateway Egress ativo: requisições CGU roteadas via ScraperAPI (Brasil / keep_headers).")
+        elif self.proxy:
+            self.session.proxies = {
+                "http": self.proxy,
+                "https": self.proxy,
+            }
+            logger.info(f"Proxy CGU customizado ativo: {self.proxy}")
+
         self.session.headers.update({
             "chave-api-dados": self.api_key,
             "Accept": "application/json, text/plain, */*",
