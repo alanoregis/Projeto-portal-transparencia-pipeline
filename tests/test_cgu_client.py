@@ -141,3 +141,13 @@ class TestCGUClientMock:
 
         assert mock_get.call_count == 4
         assert mock_sleep.call_count == 3
+
+    def test_headers_simulam_navegador_legitimo(self):
+        """Garante que a sessão inicializa com headers que mimetizam navegador comum e pt-BR contra WAF."""
+        client = CGUClient(api_key="chave_teste")
+        headers = client.session.headers
+
+        assert "Mozilla" in headers["User-Agent"]
+        assert "Chrome" in headers["User-Agent"]
+        assert "pt-BR" in headers["Accept-Language"]
+        assert headers["chave-api-dados"] == "chave_teste"

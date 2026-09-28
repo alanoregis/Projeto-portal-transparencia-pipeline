@@ -22,6 +22,7 @@ jobs:
           cache: 'pip'
 
       - name: Instalar Microsoft ODBC Driver 17 for SQL Server (Ubuntu)
+        if: runner.os == 'Linux'
         run: |
           curl https://packages.microsoft.com/keys/microsoft.asc | sudo tee /etc/apt/trusted.gpg.d/microsoft.asc
           curl https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/prod.list | sudo tee /etc/apt/sources.list.d/mssql-release.list
@@ -35,9 +36,8 @@ jobs:
           pip install pyodbc sqlalchemy "dlt[sql_database]" dbt-sqlserver
 
       - name: Instalar Dependências do dbt (dbt_utils)
-        run: |
-          cd dbt_transparencia
-          dbt deps --profiles-dir .
+        working-directory: dbt_transparencia
+        run: dbt deps --profiles-dir .
 
       - name: Executar Pipeline de Engenharia de Dados (Bronze -> Silver -> Gold)
         env:
