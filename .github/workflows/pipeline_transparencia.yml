@@ -21,9 +21,7 @@ jobs:
       - name: Checkout do Repositório
         uses: actions/checkout@v4
  
-      # Só roda nos runners hospedados pelo GitHub. No self-hosted usa o Python já instalado no PC.
       - name: Configurar Python 3.11
-        if: runner.environment == 'github-hosted'
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -44,29 +42,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pyodbc sqlalchemy "dlt[sql_database]" dbt-sqlserver
  
       - name: Instalar Dependências do dbt (dbt_utils)
         working-directory: dbt_transparencia
         run: dbt deps --profiles-dir .
- 
-      # Diagnóstico: compara o comportamento da API com dois User-Agents (PowerShell / Windows).
-      # continue-on-error para não impedir a execução do pipeline.
-      - name: Diagnóstico API CGU
-        if: runner.os == 'Windows'
-        continue-on-error: true
-        env:
-          CGU_API_KEY: ${{ secrets.CGU_API_KEY }}
-        run: |
-          $url = "https://api.portaldatransparencia.gov.br/api-de-dados/cartoes?mesExtratoInicio=01/2026&mesExtratoFim=01/2026&pagina=1"
-          $uas = @(
-            "python-requests/2.32",
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-          )
-          foreach ($ua in $uas) {
-            Write-Host "=== UA: $ua"
-            curl.exe -s -m 30 -o NUL -D - -w "status=%{http_code} tempo=%{time_total}s`n" -H "User-Agent: $ua" -H "chave-api-dados: $env:CGU_API_KEY" $url
-          }
  
       - name: Executar Pipeline de Engenharia de Dados (Bronze -> Silver -> Gold)
         env:
