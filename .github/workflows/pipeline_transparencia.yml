@@ -9,8 +9,13 @@ on:
  
 jobs:
   run-pipeline:
-    # Runner self-hosted (PC com IP brasileiro) para contornar bloqueio de IP de nuvem da API da CGU
-    runs-on: [self-hosted, Windows, X64]
+    # Executa 100% na nuvem (GitHub Actions). As chamadas CGU usam Egress Gateway brasileiro quando SCRAPERAPI_KEY existir.
+    runs-on: ubuntu-latest
+
+    # Força UTF-8 no Python (evita acentos quebrados no log)
+    env:
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: "utf-8"
  
     steps:
       - name: Checkout do Repositório
@@ -71,6 +76,8 @@ jobs:
           AZURE_SQL_PASSWORD: ${{ secrets.AZURE_SQL_PASSWORD }}
           AZURE_SQL_DRIVER: ${{ secrets.AZURE_SQL_DRIVER }}
           CGU_API_KEY: ${{ secrets.CGU_API_KEY }}
+          SCRAPERAPI_KEY: ${{ secrets.SCRAPERAPI_KEY }}
+          CGU_PROXY: ${{ secrets.CGU_PROXY }}
           INGESTION_MODE: "api"
           EXTRACT_MES_EXTRATO_INICIO: "01/2026"
           EXTRACT_MES_EXTRATO_FIM: "08/2026"
