@@ -6,7 +6,7 @@ Utiliza dados sintéticos em memória para validar o pipeline de ML sem chamadas
 import pytest
 import numpy as np
 import pandas as pd
-from ml.anomaly_detection import build_feature_matrix, train_and_score
+from ml.anomaly_detection import build_feature_matrix, train_and_score, MODEL_VERSION
 
 
 @pytest.fixture
@@ -75,6 +75,7 @@ class TestAnomalyDetectionPipeline:
         assert "is_anomaly_p95" in df_scores.columns
         assert "is_anomaly_p99" in df_scores.columns
         assert "motivo_anomalia" in df_scores.columns
+        assert "model_version" in df_scores.columns
 
     def test_anomalia_extrema_recebe_maior_score_e_flag(self, sample_gold_dataframe):
         """A transação de R$ 35.000 em domingo deve receber o maior score e ser classificada como anomalia P99."""
@@ -89,6 +90,16 @@ class TestAnomalyDetectionPipeline:
         assert score_anomalo > score_mediano
         assert anomalia_1["is_anomaly_p99"] == 1
         assert "fim de semana" in anomalia_1["motivo_anomalia"].lower()
+
+    def test_model_version_persistida_em_todos_os_registros(self, sample_gold_dataframe):
+        """Garante que todos os registros recebem a versão do modelo e que ela bate com a constante MODEL_VERSION."""
+        df_meta, X = build_feature_matrix(sample_gold_dataframe)
+        df_scores = train_and_score(df_meta, X, n_estimators=50, random_state=42)
+
+        assert "model_version" in df_scores.columns
+        # Todos os registros devem ter o mesmo valor — sem mistura de versões
+        assert df_scores["model_version"].nunique() == 1
+        assert df_scores["model_version"].iloc[0] == MODEL_VERSION
 
     def test_matriz_vazia_retorna_dataframe_vazio(self):
         vazio = pd.DataFrame(columns=["id_transacao", "vl_transacao", "media_orgao", "z_score", "dia_semana", "fl_fim_semana", "sk_favorecido", "sk_portador"])
