@@ -141,6 +141,7 @@ def train_and_score(
     df_result = pd.DataFrame({
         "id_transacao": df_meta["id_transacao"],
         "anomaly_score": np.round(normalized_scores, 4),
+        "model_version": MODEL_VERSION,
     })
 
     # Calibra limiares estatísticos (Top 5% e Top 1% mais atípicos)
@@ -211,7 +212,8 @@ def save_scores_to_azure(df_scores: pd.DataFrame, conn: pyodbc.Connection):
             is_anomaly_p95 INT NOT NULL,
             is_anomaly_p99 INT NOT NULL,
             motivo_anomalia NVARCHAR(255) NOT NULL,
-            dt_processamento DATETIME2 NOT NULL
+            dt_processamento DATETIME2 NOT NULL,
+            model_version NVARCHAR(50) NOT NULL
         );
     END;
     """
@@ -223,8 +225,9 @@ def save_scores_to_azure(df_scores: pd.DataFrame, conn: pyodbc.Connection):
 
     insert_sql = f"""
     INSERT INTO {SCORE_TABLE} (
-        id_transacao, anomaly_score, is_anomaly_p95, is_anomaly_p99, motivo_anomalia, dt_processamento
-    ) VALUES (?, ?, ?, ?, ?, ?)
+        id_transacao, anomaly_score, is_anomaly_p95, is_anomaly_p99,
+        motivo_anomalia, dt_processamento, model_version
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)
     """
 
     records = [
@@ -234,7 +237,8 @@ def save_scores_to_azure(df_scores: pd.DataFrame, conn: pyodbc.Connection):
             int(r.is_anomaly_p95),
             int(r.is_anomaly_p99),
             str(r.motivo_anomalia),
-            r.dt_processamento.to_pydatetime()
+            r.dt_processamento.to_pydatetime(),
+            str(r.model_version),
         )
         for r in df_scores.itertuples(index=False)
     ]
