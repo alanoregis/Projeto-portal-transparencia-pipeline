@@ -147,9 +147,12 @@ class CGUClient:
         self.proxy = proxy or os.getenv("CGU_PROXY")
         self.session = requests.Session()
 
-        # Gateway Egress (ex: ScraperAPI) para contornar bloqueios geográficos (WAF) da CGU
+        self.gateway_url = os.getenv("CGU_GATEWAY_URL")
         scraper_key = os.getenv("SCRAPERAPI_KEY")
-        if scraper_key:
+
+        if self.gateway_url:
+            logger.info("Gateway Serverless ativo: requisições CGU roteadas via Azure Function (São Paulo).")
+        elif scraper_key:
             proxy_url = f"http://scraperapi.country_code=br.keep_headers=true:{scraper_key}@proxy-server.scraperapi.com:8001"
             self.session.proxies = {
                 "http": proxy_url,
@@ -186,8 +189,13 @@ class CGUClient:
         backoff_factor: float = 2.0,
     ) -> list:
         """Executa uma requisição GET com retry em caso de rate limit ou falhas transitórias."""
-        url = f"{BASE_URL}{endpoint}" if not endpoint.startswith("http") else endpoint
-        params = params or {}
+        if self.gateway_url:
+            url = self.gateway_url
+            params = params.copy() if params else {}
+            params["endpoint"] = endpoint
+        else:
+            url = f"{BASE_URL}{endpoint}" if not endpoint.startswith("http") else endpoint
+            params = params or {}
         last_status = None
 
         for attempt in range(1, max_retries + 1):
