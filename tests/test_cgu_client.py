@@ -7,10 +7,22 @@ from unittest.mock import patch, MagicMock
 import pytest
 import requests
 from ingestion.cgu_client import CGUClient, CGUAPIError, normalize_to_mm_aaaa, normalize_record
+from ingestion.pipeline_transparencia import get_default_rolling_window
 
 
 class TestNormalizacoesCGU:
     """Testes para garantir que datas e dicionários sejam padronizados corretamente."""
+
+    def test_rolling_window_retorna_formato_e_ordem_corretos(self):
+        """Garante que a janela móvel incremental retorne datas válidas MM/AAAA."""
+        inicio, fim = get_default_rolling_window(months_back=2)
+        assert len(inicio.split("/")) == 2
+        assert len(fim.split("/")) == 2
+        m_ini, a_ini = int(inicio.split("/")[0]), int(inicio.split("/")[1])
+        m_fim, a_fim = int(fim.split("/")[0]), int(fim.split("/")[1])
+        assert 1 <= m_ini <= 12
+        assert 1 <= m_fim <= 12
+        assert a_fim >= a_ini
 
     def test_normalize_to_mm_aaaa_com_barra(self):
         assert normalize_to_mm_aaaa("1/2026", default_month=1) == "01/2026"

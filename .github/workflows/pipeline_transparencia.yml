@@ -58,9 +58,8 @@ jobs:
           SCRAPERAPI_KEY: ${{ secrets.SCRAPERAPI_KEY }}
           CGU_PROXY: ${{ secrets.CGU_PROXY }}
           INGESTION_MODE: "api"
-          EXTRACT_MES_EXTRATO_INICIO: "01/2024"
-          EXTRACT_MES_EXTRATO_FIM: "08/2026"
-          MAX_PAGES_PER_MONTH: "100"
+          EXTRACT_WINDOW_MONTHS: "2"
+          MAX_PAGES_PER_MONTH: "5"
         run: |
           python run_pipeline.py
  
