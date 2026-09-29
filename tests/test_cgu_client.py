@@ -164,21 +164,9 @@ class TestCGUClientMock:
         assert "pt-BR" in headers["Accept-Language"]
         assert headers["chave-api-dados"] == "chave_teste"
 
-    def test_proxy_scraperapi_configurado_corretamente(self, monkeypatch):
-        """Garante que a presença de SCRAPERAPI_KEY ativa o proxy com saída no Brasil e keep_headers."""
-        monkeypatch.setenv("SCRAPERAPI_KEY", "chave_scraper_123")
-        client = CGUClient(api_key="chave_cgu")
-
-        assert client.session.proxies is not None
-        assert "proxy-server.scraperapi.com:8001" in client.session.proxies["http"]
-        assert "country_code=br" in client.session.proxies["http"]
-        assert "keep_headers=true" in client.session.proxies["http"]
-        assert "chave_scraper_123" in client.session.proxies["http"]
-        assert client.session.verify is False
-
     def test_proxy_customizado_fallback(self, monkeypatch):
-        """Garante que CGU_PROXY ativa proxy padrão quando ScraperAPI não estiver definida."""
-        monkeypatch.delenv("SCRAPERAPI_KEY", raising=False)
+        """Garante que CGU_PROXY ativa proxy padrão quando configurado."""
+        monkeypatch.delenv("CGU_GATEWAY_URL", raising=False)
         monkeypatch.setenv("CGU_PROXY", "http://meu-proxy-br:8080")
         client = CGUClient(api_key="chave_cgu")
 
