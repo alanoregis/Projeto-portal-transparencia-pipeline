@@ -398,6 +398,8 @@ A API da CGU expõe dados com vazamento de CPF/CNPJ anexados ao nome do estabele
 
 Validação Fail-Fast executada antes de qualquer chamada externa ou transformação de dados:
 
+![Testes Unitários (pytest)](docs/images/pytest.png)
+
 | Módulo de Teste | Qtd | Escopo e Proteção de Negócio |
 | :--- | :---: | :--- |
 | `tests/test_sanitization.py` | 20 | **LGPD & Sanitização:** Remoção de vazamento de CPF/CNPJ em nomes de favorecidos preservando empresas com dígitos legítimos (`100 FRONTEIRA`, `3M`, `1000 GRAUS`). |
