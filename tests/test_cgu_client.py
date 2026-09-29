@@ -195,3 +195,30 @@ class TestCGUClientMock:
         assert chamada_url == "https://func-cgu-proxy-alano.azurewebsites.net/api/cgu_proxy"
         assert chamada_params["endpoint"] == "/cartoes"
         assert chamada_params["pagina"] == 1
+
+    @patch("requests.Session.get")
+    def test_gateway_secret_enviado_no_header(self, mock_get, monkeypatch):
+        """Garante que o GATEWAY_SECRET é injetado no header X-Gateway-Secret ao chamar a Azure Function."""
+        monkeypatch.setenv("CGU_GATEWAY_URL", "https://func-cgu-proxy-alano.azurewebsites.net/api/cgu_proxy")
+        monkeypatch.setenv("GATEWAY_SECRET", "meu-token-secreto-123")
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = [{"id": 1}]
+        mock_get.return_value = mock_response
+
+        client = CGUClient(api_key="chave_cgu")
+        client._request_with_retry("/cartoes", params={"pagina": 1})
+
+        # Valida que o header de autenticação foi enviado na sessão
+        assert client.session.headers.get("X-Gateway-Secret") == "meu-token-secreto-123"
+
+    def test_gateway_secret_ausente_emite_warning(self, monkeypatch, caplog):
+        """Garante que a ausência do GATEWAY_SECRET emite aviso de configuração incompleta."""
+        import logging
+        monkeypatch.setenv("CGU_GATEWAY_URL", "https://func-cgu-proxy-alano.azurewebsites.net/api/cgu_proxy")
+        monkeypatch.delenv("GATEWAY_SECRET", raising=False)
+
+        with caplog.at_level(logging.WARNING):
+            CGUClient(api_key="chave_cgu")
+
+        assert any("GATEWAY_SECRET" in msg for msg in caplog.messages)

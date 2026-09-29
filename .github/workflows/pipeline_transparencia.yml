@@ -56,6 +56,7 @@ jobs:
           AZURE_SQL_DRIVER: ${{ secrets.AZURE_SQL_DRIVER }}
           CGU_API_KEY: ${{ secrets.CGU_API_KEY }}
           CGU_GATEWAY_URL: ${{ secrets.CGU_GATEWAY_URL }}
+          GATEWAY_SECRET: ${{ secrets.GATEWAY_SECRET }}
           CGU_PROXY: ${{ secrets.CGU_PROXY }}
           INGESTION_MODE: "api"
           EXTRACT_WINDOW_MONTHS: "2"

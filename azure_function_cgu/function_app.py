@@ -1,4 +1,5 @@
 import logging
+import os
 import azure.functions as func
 import requests
 
@@ -6,9 +7,33 @@ app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 
 CGU_BASE_URL = "https://api.portaldatransparencia.gov.br/api-de-dados"
 
+
+def _validar_segredo(req: func.HttpRequest) -> bool:
+    """
+    Valida o segredo de acesso da requisição.
+    O token deve ser enviado no header 'X-Gateway-Secret'.
+    Se GATEWAY_SECRET não estiver configurado, a Function opera sem proteção (fallback de desenvolvimento).
+    """
+    expected = os.environ.get("GATEWAY_SECRET", "")
+    if not expected:
+        logging.warning("GATEWAY_SECRET não configurado. Operando sem autenticação (apenas para desenvolvimento).")
+        return True
+    received = req.headers.get("X-Gateway-Secret", "")
+    return received == expected
+
+
 @app.route(route="cgu_proxy", methods=["GET"])
 def cgu_proxy(req: func.HttpRequest) -> func.HttpResponse:
     logging.info("Recebida chamada no gateway cgu_proxy da Azure Function (São Paulo).")
+
+    # 0. Autenticação do pipeline: rejeita chamadas sem o segredo correto
+    if not _validar_segredo(req):
+        logging.warning("Chamada rejeitada: X-Gateway-Secret ausente ou inválido.")
+        return func.HttpResponse(
+            body='{"error": "Acesso não autorizado. Header X-Gateway-Secret inválido ou ausente."}',
+            status_code=401,
+            mimetype="application/json"
+        )
 
     # 1. Endpoint desejado (default: /cartoes)
     endpoint = req.params.get("endpoint", "/cartoes")
@@ -20,7 +45,7 @@ def cgu_proxy(req: func.HttpRequest) -> func.HttpResponse:
     # 2. Encaminha query params (ignorando o parâmetro interno 'endpoint')
     params = {k: v for k, v in req.params.items() if k != "endpoint"}
 
-    # 3. Autenticação e Headers de navegador
+    # 3. Autenticação CGU e Headers de navegador legítimo
     api_key = req.headers.get("chave-api-dados") or req.params.get("api_key")
     headers = {
         "Accept": "application/json, text/plain, */*",
@@ -47,3 +72,4 @@ def cgu_proxy(req: func.HttpRequest) -> func.HttpResponse:
             status_code=502,
             mimetype="application/json"
         )
+
