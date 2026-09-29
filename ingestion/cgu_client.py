@@ -10,7 +10,6 @@ import re
 import os
 from typing import Dict, Any, Generator, Optional
 import requests
-import urllib3
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -148,19 +147,8 @@ class CGUClient:
         self.session = requests.Session()
 
         self.gateway_url = os.getenv("CGU_GATEWAY_URL")
-        scraper_key = os.getenv("SCRAPERAPI_KEY")
-
         if self.gateway_url:
             logger.info("Gateway Serverless ativo: requisições CGU roteadas via Azure Function (São Paulo).")
-        elif scraper_key:
-            proxy_url = f"http://scraperapi.country_code=br.keep_headers=true:{scraper_key}@proxy-server.scraperapi.com:8001"
-            self.session.proxies = {
-                "http": proxy_url,
-                "https": proxy_url,
-            }
-            self.session.verify = False
-            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-            logger.info("Gateway Egress ativo: requisições CGU roteadas via ScraperAPI (Brasil / keep_headers).")
         elif self.proxy:
             self.session.proxies = {
                 "http": self.proxy,
