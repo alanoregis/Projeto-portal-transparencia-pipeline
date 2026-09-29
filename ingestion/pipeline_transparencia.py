@@ -7,8 +7,9 @@ e o carregamento resiliente no Azure SQL Database sob o schema 'bronze'.
 import os
 import sys
 import logging
+import datetime
 from pathlib import Path
-from typing import Generator, Dict, Any
+from typing import Generator, Dict, Any, Tuple
 
 from dotenv import load_dotenv
 import dlt
@@ -35,15 +36,36 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def get_default_rolling_window(months_back: int = 2) -> Tuple[str, str]:
+    """
+    Calcula dinamicamente a janela móvel (Rolling Window) cobrindo os últimos N meses
+    a partir da data atual (D-60 até D-0 por padrão).
+    Exemplo: em Setembro/2026 com months_back=2 -> retorna ('07/2026', '09/2026').
+    Permite capturar despesas retroativas e lançamentos tardios da CGU com consumo mínimo de API.
+    """
+    today = datetime.date.today()
+    mes_fim = f"{today.month:02d}/{today.year}"
+
+    mes_calc = today.month - months_back
+    ano_calc = today.year
+    while mes_calc <= 0:
+        mes_calc += 12
+        ano_calc -= 1
+
+    mes_inicio = f"{mes_calc:02d}/{ano_calc}"
+    return mes_inicio, mes_fim
+
+
 @dlt.resource(
     name="cartoes_pagamento",
-    write_disposition="replace",
+    write_disposition="merge",
     primary_key="id",
 )
 def cartoes_pagamento_resource() -> Generator[Dict[str, Any], None, None]:
     """
     Recurso dlt para extrair dados de Cartões de Pagamento (CPGF).
-    Detecta automaticamente se deve usar a API real da CGU ou dados de amostra.
+    Usa carga incremental com Upsert (write_disposition='merge') e janela móvel recente,
+    preservando o histórico consolidado de anos anteriores sem reprocessamento redundante.
     """
 
     mode = os.getenv("INGESTION_MODE", "sample").strip().lower()
@@ -63,20 +85,26 @@ def cartoes_pagamento_resource() -> Generator[Dict[str, Any], None, None]:
 
             return
 
-        inicio = os.getenv(
-            "EXTRACT_MES_EXTRATO_INICIO",
-            "01/2026"
-        ).strip()
+        # Janela Móvel: Se houver período explícito no .env ou GitHub Actions, respeita.
+        # Caso contrário, calcula automaticamente os últimos meses a partir da data de hoje.
+        inicio_env = os.getenv("EXTRACT_MES_EXTRATO_INICIO", "").strip()
+        fim_env = os.getenv("EXTRACT_MES_EXTRATO_FIM", "").strip()
 
-        fim = os.getenv(
-            "EXTRACT_MES_EXTRATO_FIM",
-            "07/2026"
-        ).strip()
+        if inicio_env and fim_env:
+            inicio = inicio_env
+            fim = fim_env
+            logger.info(f"Usando período explícito configurado: {inicio} a {fim}")
+        else:
+            window_months = int(os.getenv("EXTRACT_WINDOW_MONTHS", "2"))
+            inicio, fim = get_default_rolling_window(months_back=window_months)
+            logger.info(
+                f"Janela Móvel Incremental Ativa (Rolling Window de {window_months + 1} meses): {inicio} a {fim}"
+            )
 
         max_pages = int(
             os.getenv(
                 "MAX_PAGES_PER_MONTH",
-                "2"
+                "5"
             )
         )
 
