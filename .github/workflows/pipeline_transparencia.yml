@@ -55,11 +55,12 @@ jobs:
           AZURE_SQL_PASSWORD: ${{ secrets.AZURE_SQL_PASSWORD }}
           AZURE_SQL_DRIVER: ${{ secrets.AZURE_SQL_DRIVER }}
           CGU_API_KEY: ${{ secrets.CGU_API_KEY }}
+          CGU_GATEWAY_URL: ${{ secrets.CGU_GATEWAY_URL }}
           SCRAPERAPI_KEY: ${{ secrets.SCRAPERAPI_KEY }}
           CGU_PROXY: ${{ secrets.CGU_PROXY }}
           INGESTION_MODE: "api"
           EXTRACT_WINDOW_MONTHS: "2"
-          MAX_PAGES_PER_MONTH: "5"
+          MAX_PAGES_PER_MONTH: "15"
         run: |
           python run_pipeline.py
  

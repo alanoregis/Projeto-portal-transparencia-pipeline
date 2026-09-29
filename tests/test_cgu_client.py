@@ -186,3 +186,24 @@ class TestCGUClientMock:
             "http": "http://meu-proxy-br:8080",
             "https": "http://meu-proxy-br:8080",
         }
+
+    @patch("requests.Session.get")
+    def test_gateway_azure_function_roteamento_correto(self, mock_get, monkeypatch):
+        """Garante que CGU_GATEWAY_URL roteia as requisições para a Azure Function com o endpoint nos parâmetros."""
+        monkeypatch.setenv("CGU_GATEWAY_URL", "https://func-cgu-proxy-alano.azurewebsites.net/api/cgu_proxy")
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = [{"id": 123}]
+        mock_get.return_value = mock_response
+
+        client = CGUClient(api_key="chave_cgu")
+        dados = client._request_with_retry("/cartoes", params={"pagina": 1})
+
+        assert len(dados) == 1
+        assert dados[0]["id"] == 123
+        # Valida que chamou a URL da Function e passou endpoint nos params
+        chamada_url = mock_get.call_args[0][0]
+        chamada_params = mock_get.call_args[1]["params"]
+        assert chamada_url == "https://func-cgu-proxy-alano.azurewebsites.net/api/cgu_proxy"
+        assert chamada_params["endpoint"] == "/cartoes"
+        assert chamada_params["pagina"] == 1
