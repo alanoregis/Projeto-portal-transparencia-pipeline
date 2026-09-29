@@ -147,8 +147,11 @@ class CGUClient:
         self.session = requests.Session()
 
         self.gateway_url = os.getenv("CGU_GATEWAY_URL")
+        self.gateway_secret = os.getenv("GATEWAY_SECRET", "")
         if self.gateway_url:
             logger.info("Gateway Serverless ativo: requisições CGU roteadas via Azure Function (São Paulo).")
+            if not self.gateway_secret:
+                logger.warning("GATEWAY_SECRET não configurado. A Function pode rejeitar a requisição com 401.")
         elif self.proxy:
             self.session.proxies = {
                 "http": self.proxy,
@@ -181,6 +184,9 @@ class CGUClient:
             url = self.gateway_url
             params = params.copy() if params else {}
             params["endpoint"] = endpoint
+            # Autentica o pipeline como chamador autorizado da Azure Function
+            if self.gateway_secret:
+                self.session.headers.update({"X-Gateway-Secret": self.gateway_secret})
         else:
             url = f"{BASE_URL}{endpoint}" if not endpoint.startswith("http") else endpoint
             params = params or {}
